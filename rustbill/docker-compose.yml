@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rantai-billing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rantai_billing
+      POSTGRES_PASSWORD: rantai_billing_dev
+      POSTGRES_DB: rantai_billing
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rantai_billing"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rustbill-api:
+    build: .
+    container_name: rantai-rustbill-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://rantai_billing:rantai_billing_dev@postgres:5432/rantai_billing
+      RUST_LOG: rustbill_server=debug,rustbill_core=debug,tower_http=info
+      RUN_MODE: development
+    ports:
+      - "3001:3001"
+
+volumes:
+  pgdata:

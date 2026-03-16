@@ -1,0 +1,58 @@
+[package]
+name = "rustbill-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rustbill-server"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+rustbill-core = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Rate limiting
+governor = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Types
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Database (for AppState)
+sqlx = { workspace = true }
+
+# HTTP client (for AppState)
+reqwest = { workspace = true }
+
+# Validation (used by some route handlers)
+validator = { workspace = true }
+
+# Crypto (used by some route handlers)
+sha2 = { workspace = true }
+hex = { workspace = true }
+hmac = { workspace = true }
+subtle = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
