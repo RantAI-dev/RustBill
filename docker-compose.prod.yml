@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rantai-billing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rantai_billing
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rantai_billing_prod}
+      POSTGRES_DB: rantai_billing
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rantai_billing"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    image: rantai-billing:latest
+    container_name: rantai-billing-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-13300}:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://rantai_billing:${POSTGRES_PASSWORD:-rantai_billing_prod}@postgres:5432/rantai_billing
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/login || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:

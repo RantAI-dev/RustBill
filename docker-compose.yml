@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rantai-billing-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rantai_billing
+      POSTGRES_PASSWORD: rantai_billing_dev
+      POSTGRES_DB: rantai_billing
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
