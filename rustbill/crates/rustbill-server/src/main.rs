@@ -1,10 +1,7 @@
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod app;
-mod routes;
-mod middleware;
-mod extractors;
+use rustbill_server::app;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

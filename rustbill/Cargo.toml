@@ -72,6 +72,10 @@ async-stripe = { version = "0.39", features = ["runtime-tokio-hyper-rustls"] }
 # Rate limiting
 governor = "0.8"
 
+# Testing
+axum-test = "19"
+cookie = "0.18"
+
 # Internal crates
 rustbill-core = { path = "crates/rustbill-core" }
 
