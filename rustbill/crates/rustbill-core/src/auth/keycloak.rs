@@ -57,7 +57,10 @@ pub async fn exchange_code(
     }
 
     let resp: TokenResponse = http
-        .post(format!("{}/protocol/openid-connect/token", config.realm_url))
+        .post(format!(
+            "{}/protocol/openid-connect/token",
+            config.realm_url
+        ))
         .form(&params)
         .send()
         .await?
@@ -75,7 +78,10 @@ pub async fn get_user_info(
     access_token: &str,
 ) -> anyhow::Result<UserInfo> {
     let info: UserInfo = http
-        .get(format!("{}/protocol/openid-connect/userinfo", config.realm_url))
+        .get(format!(
+            "{}/protocol/openid-connect/userinfo",
+            config.realm_url
+        ))
         .bearer_auth(access_token)
         .send()
         .await?
@@ -98,9 +104,9 @@ pub async fn find_or_create_user(
         .await
         .map_err(|e| anyhow::anyhow!("keycloak userinfo failed: {e}"))?;
 
-    let email = info.email.ok_or_else(|| {
-        crate::error::BillingError::bad_request("Keycloak account has no email")
-    })?;
+    let email = info
+        .email
+        .ok_or_else(|| crate::error::BillingError::bad_request("Keycloak account has no email"))?;
 
     // Check if user is admin (has configured admin role)
     if let Some(ref admin_role) = config.admin_role {
@@ -114,7 +120,8 @@ pub async fn find_or_create_user(
         }
     }
 
-    let name = info.name
+    let name = info
+        .name
         .or(info.preferred_username)
         .unwrap_or_else(|| email.clone());
 
@@ -128,7 +135,7 @@ pub async fn find_or_create_user(
             auth_provider = 'keycloak',
             updated_at = NOW()
         RETURNING id
-        "#
+        "#,
     )
     .bind(&email)
     .bind(&name)
@@ -139,7 +146,11 @@ pub async fn find_or_create_user(
 }
 
 /// Build the Keycloak logout URL.
-pub fn build_logout_url(config: &KeycloakConfig, id_token: Option<&str>, redirect_uri: &str) -> String {
+pub fn build_logout_url(
+    config: &KeycloakConfig,
+    id_token: Option<&str>,
+    redirect_uri: &str,
+) -> String {
     let mut url = format!(
         "{}/protocol/openid-connect/logout?post_logout_redirect_uri={}",
         config.realm_url,

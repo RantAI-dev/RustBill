@@ -85,10 +85,7 @@ pub struct InvoiceView {
 
 // ---- Service functions ----
 
-pub async fn list_invoices(
-    pool: &PgPool,
-    filter: &ListInvoicesFilter,
-) -> Result<Vec<InvoiceView>> {
+pub async fn list_invoices(pool: &PgPool, filter: &ListInvoicesFilter) -> Result<Vec<InvoiceView>> {
     let rows = sqlx::query_as::<_, InvoiceView>(
         r#"
         SELECT
@@ -113,13 +110,11 @@ pub async fn list_invoices(
 }
 
 pub async fn get_invoice(pool: &PgPool, id: &str) -> Result<Invoice> {
-    sqlx::query_as::<_, Invoice>(
-        "SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| BillingError::not_found("invoice", id))
+    sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| BillingError::not_found("invoice", id))
 }
 
 pub async fn create_invoice(pool: &PgPool, req: CreateInvoiceRequest) -> Result<Invoice> {
@@ -131,11 +126,10 @@ pub async fn create_invoice(pool: &PgPool, req: CreateInvoiceRequest) -> Result<
     let mut tx = pool.begin().await?;
 
     // Generate invoice number from DB sequence
-    let invoice_number: String = sqlx::query_scalar(
-        "SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
+    let invoice_number: String =
+        sqlx::query_scalar("SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')")
+            .fetch_one(&mut *tx)
+            .await?;
 
     // Insert the invoice in draft state with zero totals initially
     let invoice = sqlx::query_as::<_, Invoice>(
@@ -166,12 +160,10 @@ pub async fn create_invoice(pool: &PgPool, req: CreateInvoiceRequest) -> Result<
         .await?
         .ok_or_else(|| BillingError::not_found("subscription", sub_id.as_str()))?;
 
-        let plan = sqlx::query_as::<_, PricingPlan>(
-            "SELECT * FROM pricing_plans WHERE id = $1",
-        )
-        .bind(&sub.plan_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let plan = sqlx::query_as::<_, PricingPlan>("SELECT * FROM pricing_plans WHERE id = $1")
+            .bind(&sub.plan_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
         // Calculate amount using tiered pricing helper
         let tiers: Option<Vec<PricingTier>> = plan
@@ -196,7 +188,11 @@ pub async fn create_invoice(pool: &PgPool, req: CreateInvoiceRequest) -> Result<
             "#,
         )
         .bind(&invoice.id)
-        .bind(format!("{} ({})", plan.name, format_cycle(&plan.billing_cycle)))
+        .bind(format!(
+            "{} ({})",
+            plan.name,
+            format_cycle(&plan.billing_cycle)
+        ))
         .bind(Decimal::from(sub.quantity))
         .bind(plan.base_price)
         .bind(amount)
@@ -214,12 +210,16 @@ pub async fn create_invoice(pool: &PgPool, req: CreateInvoiceRequest) -> Result<
         .bind(coupon_code)
         .fetch_optional(&mut *tx)
         .await?
-        .ok_or_else(|| BillingError::bad_request(format!("coupon '{coupon_code}' not found or inactive")))?;
+        .ok_or_else(|| {
+            BillingError::bad_request(format!("coupon '{coupon_code}' not found or inactive"))
+        })?;
 
         // Check redemption limits
         if let Some(max) = coupon.max_redemptions {
             if coupon.times_redeemed >= max {
-                return Err(BillingError::bad_request("coupon has reached max redemptions"));
+                return Err(BillingError::bad_request(
+                    "coupon has reached max redemptions",
+                ));
             }
         }
 
@@ -381,11 +381,7 @@ pub async fn update_invoice_with_notification(
     Ok(invoice)
 }
 
-pub async fn update_invoice(
-    pool: &PgPool,
-    id: &str,
-    req: UpdateInvoiceRequest,
-) -> Result<Invoice> {
+pub async fn update_invoice(pool: &PgPool, id: &str, req: UpdateInvoiceRequest) -> Result<Invoice> {
     let now = chrono::Utc::now().naive_utc();
 
     // If status is being set to "issued", set issued_at
@@ -515,12 +511,11 @@ async fn recompute_invoice_totals(
     let subtotal = subtotal.unwrap_or_default();
 
     // Keep existing tax ratio
-    let (old_subtotal, old_tax): (Decimal, Decimal) = sqlx::query_as(
-        "SELECT subtotal, tax FROM invoices WHERE id = $1",
-    )
-    .bind(invoice_id)
-    .fetch_one(&mut **tx)
-    .await?;
+    let (old_subtotal, old_tax): (Decimal, Decimal) =
+        sqlx::query_as("SELECT subtotal, tax FROM invoices WHERE id = $1")
+            .bind(invoice_id)
+            .fetch_one(&mut **tx)
+            .await?;
 
     let tax = if old_subtotal > Decimal::ZERO {
         (subtotal * old_tax / old_subtotal).round_dp(2)

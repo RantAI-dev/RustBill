@@ -1,7 +1,7 @@
 //! API key generation, hashing, and verification.
 
 use rand::Rng;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 const API_KEY_PREFIX: &str = "pk_live_";
@@ -12,7 +12,9 @@ pub fn generate_api_key() -> String {
         .chars()
         .collect();
     let mut rng = rand::thread_rng();
-    let random_part: String = (0..40).map(|_| chars[rng.gen_range(0..chars.len())]).collect();
+    let random_part: String = (0..40)
+        .map(|_| chars[rng.gen_range(0..chars.len())])
+        .collect();
     format!("{API_KEY_PREFIX}{random_part}")
 }
 
@@ -29,18 +31,14 @@ pub fn get_key_prefix(key: &str) -> String {
 }
 
 /// Verify an API key against the database. Returns the key ID and name if valid.
-pub async fn verify_api_key(
-    pool: &PgPool,
-    key: &str,
-) -> crate::error::Result<Option<ApiKeyInfo>> {
+pub async fn verify_api_key(pool: &PgPool, key: &str) -> crate::error::Result<Option<ApiKeyInfo>> {
     let key_hash = hash_api_key(key);
 
-    let row = sqlx::query_as::<_, ApiKeyRow>(
-        "SELECT id, name, status FROM api_keys WHERE key_hash = $1"
-    )
-    .bind(&key_hash)
-    .fetch_optional(pool)
-    .await?;
+    let row =
+        sqlx::query_as::<_, ApiKeyRow>("SELECT id, name, status FROM api_keys WHERE key_hash = $1")
+            .bind(&key_hash)
+            .fetch_optional(pool)
+            .await?;
 
     match row {
         Some(r) if r.status == "active" => {

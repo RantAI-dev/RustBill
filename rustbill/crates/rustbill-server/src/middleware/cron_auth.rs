@@ -1,5 +1,6 @@
 //! Cron secret authentication for scheduled task endpoints.
 
+use crate::app::SharedState;
 use axum::{
     extract::State,
     http::{Request, StatusCode},
@@ -7,7 +8,6 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use crate::app::SharedState;
 
 /// Middleware that requires cron secret OR valid admin session.
 pub async fn require_cron_or_admin(
@@ -57,5 +57,6 @@ pub async fn require_cron_or_admin(
     (
         StatusCode::UNAUTHORIZED,
         Json(serde_json::json!({ "error": "Unauthorized" })),
-    ).into_response()
+    )
+        .into_response()
 }

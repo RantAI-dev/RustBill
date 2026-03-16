@@ -95,10 +95,7 @@ pub async fn get_credit_note(pool: &PgPool, id: &str) -> Result<CreditNote> {
     .ok_or_else(|| BillingError::not_found("credit_note", id))
 }
 
-pub async fn create_credit_note(
-    pool: &PgPool,
-    req: CreateCreditNoteRequest,
-) -> Result<CreditNote> {
+pub async fn create_credit_note(pool: &PgPool, req: CreateCreditNoteRequest) -> Result<CreditNote> {
     req.validate().map_err(BillingError::from_validation)?;
 
     if req.items.is_empty() {
@@ -110,11 +107,10 @@ pub async fn create_credit_note(
     let mut tx = pool.begin().await?;
 
     // Generate credit note number
-    let credit_note_number: String = sqlx::query_scalar(
-        "SELECT 'CN-' || LPAD(nextval('credit_note_number_seq')::text, 8, '0')",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
+    let credit_note_number: String =
+        sqlx::query_scalar("SELECT 'CN-' || LPAD(nextval('credit_note_number_seq')::text, 8, '0')")
+            .fetch_one(&mut *tx)
+            .await?;
 
     // Compute total amount from items
     let amount: Decimal = req

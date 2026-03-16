@@ -13,12 +13,11 @@ pub async fn list_products(pool: &PgPool) -> Result<Vec<serde_json::Value>> {
     let mut results = Vec::with_capacity(rows.len());
     for p in rows {
         // Compute revenue from deals
-        let revenue: Option<Decimal> = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(value), 0) FROM deals WHERE product_id = $1"
-        )
-        .bind(&p.id)
-        .fetch_one(pool)
-        .await?;
+        let revenue: Option<Decimal> =
+            sqlx::query_scalar("SELECT COALESCE(SUM(value), 0) FROM deals WHERE product_id = $1")
+                .bind(&p.id)
+                .fetch_one(pool)
+                .await?;
 
         // Compute MoM change
         let this_month: Option<Decimal> = sqlx::query_scalar(
@@ -49,27 +48,35 @@ pub async fn list_products(pool: &PgPool) -> Result<Vec<serde_json::Value>> {
 
         let mut val = serde_json::to_value(&p).unwrap();
         let obj = val.as_object_mut().unwrap();
-        obj.insert("revenue".to_string(), serde_json::json!(revenue.unwrap_or_default().to_string()));
+        obj.insert(
+            "revenue".to_string(),
+            serde_json::json!(revenue.unwrap_or_default().to_string()),
+        );
         obj.insert("change".to_string(), serde_json::json!(change.to_string()));
 
         // License counts for licensed products
         if p.product_type == crate::db::models::ProductType::Licensed {
             let active: Option<i64> = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM licenses WHERE product_id = $1 AND status = 'active'"
+                "SELECT COUNT(*) FROM licenses WHERE product_id = $1 AND status = 'active'",
             )
             .bind(&p.id)
             .fetch_one(pool)
             .await?;
 
-            let total: Option<i64> = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM licenses WHERE product_id = $1"
-            )
-            .bind(&p.id)
-            .fetch_one(pool)
-            .await?;
+            let total: Option<i64> =
+                sqlx::query_scalar("SELECT COUNT(*) FROM licenses WHERE product_id = $1")
+                    .bind(&p.id)
+                    .fetch_one(pool)
+                    .await?;
 
-            obj.insert("activeLicenses".to_string(), serde_json::json!(active.unwrap_or(0)));
-            obj.insert("totalLicenses".to_string(), serde_json::json!(total.unwrap_or(0)));
+            obj.insert(
+                "activeLicenses".to_string(),
+                serde_json::json!(active.unwrap_or(0)),
+            );
+            obj.insert(
+                "totalLicenses".to_string(),
+                serde_json::json!(total.unwrap_or(0)),
+            );
         }
 
         results.push(val);
@@ -96,7 +103,7 @@ pub async fn create_product(pool: &PgPool, req: CreateProductRequest) -> Result<
         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING *
-        "#
+        "#,
     )
     .bind(&req.name)
     .bind(&req.product_type)
@@ -146,7 +153,7 @@ pub async fn update_product(pool: &PgPool, id: &str, req: UpdateProductRequest) 
             updated_at = NOW()
         WHERE id = $1
         RETURNING *
-        "#
+        "#,
     )
     .bind(id)
     .bind(&req.name)

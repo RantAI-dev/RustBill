@@ -3,8 +3,8 @@
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 const CACHE_TTL: Duration = Duration::from_secs(60);
 
@@ -51,21 +51,23 @@ impl ProviderSettingsCache {
         }
 
         // Try DB
-        let db_value: Option<String> = sqlx::query_scalar(
-            "SELECT value FROM system_settings WHERE key = $1"
-        )
-        .bind(key)
-        .fetch_optional(&self.pool)
-        .await
-        .ok()
-        .flatten();
+        let db_value: Option<String> =
+            sqlx::query_scalar("SELECT value FROM system_settings WHERE key = $1")
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten();
 
         if let Some(ref val) = db_value {
             let mut cache = self.cache.write().await;
-            cache.insert(key.to_string(), CacheEntry {
-                value: val.clone(),
-                expires_at: Instant::now() + CACHE_TTL,
-            });
+            cache.insert(
+                key.to_string(),
+                CacheEntry {
+                    value: val.clone(),
+                    expires_at: Instant::now() + CACHE_TTL,
+                },
+            );
             return val.clone();
         }
 
@@ -92,7 +94,7 @@ impl ProviderSettingsCache {
         sqlx::query(
             r#"INSERT INTO system_settings (key, value, sensitive, updated_at)
             VALUES ($1, $2, $3, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = $2, sensitive = $3, updated_at = NOW()"#
+            ON CONFLICT (key) DO UPDATE SET value = $2, sensitive = $3, updated_at = NOW()"#,
         )
         .bind(key)
         .bind(value)

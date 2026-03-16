@@ -1,5 +1,6 @@
 //! API key authentication middleware for public v1 API.
 
+use crate::app::SharedState;
 use axum::{
     extract::State,
     http::{Request, StatusCode},
@@ -7,7 +8,6 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use crate::app::SharedState;
 use rustbill_core::auth::api_key::ApiKeyInfo;
 
 /// Middleware that requires a valid API key in Authorization: Bearer header.
@@ -29,7 +29,8 @@ pub async fn require_api_key(
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({ "error": "Missing or invalid API key" })),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -38,11 +39,10 @@ pub async fn require_api_key(
             req.extensions_mut().insert(info);
             next.run(req).await
         }
-        _ => {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "error": "Invalid API key" })),
-            ).into_response()
-        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "Invalid API key" })),
+        )
+            .into_response(),
     }
 }

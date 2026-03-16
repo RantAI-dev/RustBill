@@ -1,11 +1,17 @@
-use axum::{extract::State, routing::{get, put}, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{
+    extract::State,
+    routing::{get, put},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
-    Router::new()
-        .route("/payment-providers", get(get_providers).put(update_providers))
+    Router::new().route(
+        "/payment-providers",
+        get(get_providers).put(update_providers),
+    )
 }
 
 async fn get_providers(

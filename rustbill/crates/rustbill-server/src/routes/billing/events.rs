@@ -1,7 +1,11 @@
-use axum::{extract::{Path, Query, State}, routing::get, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, Query, State},
+    routing::get,
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()

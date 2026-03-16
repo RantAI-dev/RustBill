@@ -19,16 +19,17 @@ where
 {
     type Rejection = Response;
 
-    async fn from_request(
-        req: axum::extract::Request,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
-        let Json(value) = Json::<T>::from_request(req, state).await.map_err(|e: JsonRejection| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            ).into_response()
-        })?;
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
+        let Json(value) =
+            Json::<T>::from_request(req, state)
+                .await
+                .map_err(|e: JsonRejection| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({ "error": e.to_string() })),
+                    )
+                        .into_response()
+                })?;
 
         value.validate().map_err(|e| {
             let errors: Vec<serde_json::Value> = e

@@ -117,7 +117,10 @@ async fn add_line_item_to_invoice(pool: PgPool) {
     resp.assert_status(axum::http::StatusCode::CREATED);
     let body: serde_json::Value = resp.json();
     assert_eq!(body["invoice_id"].as_str().unwrap(), inv_id);
-    assert_eq!(body["description"].as_str().unwrap(), "SaaS Pro Plan - Monthly");
+    assert_eq!(
+        body["description"].as_str().unwrap(),
+        "SaaS Pro Plan - Monthly"
+    );
 
     // Verify items list
     let resp = server

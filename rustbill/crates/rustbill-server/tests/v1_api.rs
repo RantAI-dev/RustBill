@@ -63,7 +63,11 @@ async fn v1_products_list(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: Vec<serde_json::Value> = resp.json();
-    assert!(body.len() >= 2, "expected at least 2 products, got {}", body.len());
+    assert!(
+        body.len() >= 2,
+        "expected at least 2 products, got {}",
+        body.len()
+    );
 
     // Verify our products are in the list
     let ids: Vec<&str> = body.iter().filter_map(|v| v["id"].as_str()).collect();
@@ -82,7 +86,10 @@ async fn v1_licenses_crud_cycle(pool: PgPool) {
     let customer_id = create_test_customer(&pool).await;
     let product_id = create_test_product(&pool, "licensed").await;
 
-    let license_key = format!("TESTLIC-{}", uuid::Uuid::new_v4().to_string()[..8].to_uppercase());
+    let license_key = format!(
+        "TESTLIC-{}",
+        uuid::Uuid::new_v4().to_string()[..8].to_uppercase()
+    );
 
     let auth_header = format!("Bearer {}", key);
     let auth_name = HeaderName::from_static("authorization");
@@ -97,7 +104,10 @@ async fn v1_licenses_crud_cycle(pool: PgPool) {
 
     let resp = server
         .post("/api/v1/licenses")
-        .add_header(auth_name.clone(), HeaderValue::from_str(&auth_header).unwrap())
+        .add_header(
+            auth_name.clone(),
+            HeaderValue::from_str(&auth_header).unwrap(),
+        )
         .json(&create_body)
         .await;
 
@@ -208,10 +218,7 @@ async fn v1_usage_batch_post(pool: PgPool) {
 
     // Verify via a GET that the records are persisted
     let resp = server
-        .get(&format!(
-            "/api/v1/billing/usage?subscriptionId={}",
-            sub_id
-        ))
+        .get(&format!("/api/v1/billing/usage?subscriptionId={}", sub_id))
         .add_header(
             auth_name.clone(),
             HeaderValue::from_str(&auth_header).unwrap(),

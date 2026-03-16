@@ -38,7 +38,10 @@ mod stripe_impl {
         client: &StripeClient,
         params: CheckoutParams,
     ) -> Result<Option<String>> {
-        let amount = params.total.to_string().parse::<f64>()
+        let amount = params
+            .total
+            .to_string()
+            .parse::<f64>()
             .map(|v| (v * 100.0) as i64)
             .map_err(|e| anyhow::anyhow!("invalid amount: {e}"))?;
 
@@ -53,7 +56,11 @@ mod stripe_impl {
 
         create.line_items = Some(vec![stripe::CreateCheckoutSessionLineItems {
             price_data: Some(stripe::CreateCheckoutSessionLineItemsPriceData {
-                currency: params.currency.to_lowercase().parse().unwrap_or(stripe::Currency::USD),
+                currency: params
+                    .currency
+                    .to_lowercase()
+                    .parse()
+                    .unwrap_or(stripe::Currency::USD),
                 unit_amount: Some(amount),
                 product_data: Some(stripe::CreateCheckoutSessionLineItemsPriceDataProductData {
                     name: format!("Invoice {}", params.invoice_number),
@@ -77,7 +84,11 @@ mod stripe_impl {
     }
 
     /// Verify a Stripe webhook signature.
-    pub fn verify_webhook(payload: &str, sig_header: &str, secret: &str) -> Result<serde_json::Value> {
+    pub fn verify_webhook(
+        payload: &str,
+        sig_header: &str,
+        secret: &str,
+    ) -> Result<serde_json::Value> {
         let event = stripe::Webhook::construct_event(payload, sig_header, secret)
             .map_err(|e| anyhow::anyhow!("stripe signature verification failed: {e}"))?;
 
@@ -107,10 +118,18 @@ mod stripe_impl {
 
 #[cfg(not(feature = "stripe"))]
 pub async fn create_checkout_session(_params: CheckoutParams) -> Result<Option<String>> {
-    Err(crate::error::BillingError::ProviderNotConfigured("stripe".to_string()))
+    Err(crate::error::BillingError::ProviderNotConfigured(
+        "stripe".to_string(),
+    ))
 }
 
 #[cfg(not(feature = "stripe"))]
-pub fn verify_webhook(_payload: &str, _sig_header: &str, _secret: &str) -> Result<serde_json::Value> {
-    Err(crate::error::BillingError::ProviderNotConfigured("stripe".to_string()))
+pub fn verify_webhook(
+    _payload: &str,
+    _sig_header: &str,
+    _secret: &str,
+) -> Result<serde_json::Value> {
+    Err(crate::error::BillingError::ProviderNotConfigured(
+        "stripe".to_string(),
+    ))
 }

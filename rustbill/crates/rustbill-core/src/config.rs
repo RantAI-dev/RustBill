@@ -26,8 +26,12 @@ pub struct DatabaseConfig {
     pub min_connections: u32,
 }
 
-fn default_max_conn() -> u32 { 20 }
-fn default_min_conn() -> u32 { 5 }
+fn default_max_conn() -> u32 {
+    20
+}
+fn default_min_conn() -> u32 {
+    5
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AuthConfig {
@@ -39,8 +43,12 @@ pub struct AuthConfig {
     pub cron_secret: Option<String>,
 }
 
-fn default_provider() -> String { "default".to_string() }
-fn default_session_expiry() -> u32 { 7 }
+fn default_provider() -> String {
+    "default".to_string()
+}
+fn default_session_expiry() -> u32 {
+    7
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct KeycloakConfig {
@@ -60,8 +68,12 @@ pub struct CronConfig {
     pub enabled: bool,
 }
 
-fn default_lifecycle_schedule() -> String { "0 0 * * * *".to_string() }
-fn default_dunning_schedule() -> String { "0 0 */6 * * *".to_string() }
+fn default_lifecycle_schedule() -> String {
+    "0 0 * * * *".to_string()
+}
+fn default_dunning_schedule() -> String {
+    "0 0 */6 * * *".to_string()
+}
 
 impl AppConfig {
     /// Load config from TOML files + environment variables.

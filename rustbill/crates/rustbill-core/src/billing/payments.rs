@@ -51,10 +51,7 @@ pub struct PaymentView {
 
 // ---- Service functions ----
 
-pub async fn list_payments(
-    pool: &PgPool,
-    filter: &ListPaymentsFilter,
-) -> Result<Vec<PaymentView>> {
+pub async fn list_payments(pool: &PgPool, filter: &ListPaymentsFilter) -> Result<Vec<PaymentView>> {
     let rows = sqlx::query_as::<_, PaymentView>(
         r#"
         SELECT p.*
@@ -78,19 +75,21 @@ pub async fn create_payment(pool: &PgPool, req: CreatePaymentRequest) -> Result<
     Ok(payment)
 }
 
-async fn create_payment_inner(pool: &PgPool, req: CreatePaymentRequest) -> Result<(Payment, Invoice, bool)> {
+async fn create_payment_inner(
+    pool: &PgPool,
+    req: CreatePaymentRequest,
+) -> Result<(Payment, Invoice, bool)> {
     req.validate().map_err(BillingError::from_validation)?;
 
     let mut tx = pool.begin().await?;
 
     // Validate invoice exists and is not void/paid
-    let invoice = sqlx::query_as::<_, Invoice>(
-        "SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(&req.invoice_id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(|| BillingError::not_found("invoice", &req.invoice_id))?;
+    let invoice =
+        sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+            .bind(&req.invoice_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| BillingError::not_found("invoice", &req.invoice_id))?;
 
     if invoice.status == InvoiceStatus::Void {
         return Err(BillingError::bad_request("cannot pay a voided invoice"));
@@ -101,21 +100,18 @@ async fn create_payment_inner(pool: &PgPool, req: CreatePaymentRequest) -> Resul
 
     // Idempotency check on Stripe payment intent ID
     if let Some(ref stripe_id) = req.stripe_payment_intent_id {
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM payments WHERE stripe_payment_intent_id = $1",
-        )
-        .bind(stripe_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM payments WHERE stripe_payment_intent_id = $1")
+                .bind(stripe_id)
+                .fetch_optional(&mut *tx)
+                .await?;
 
         if let Some((existing_id,)) = existing {
             // Return existing payment (idempotent)
-            let p = sqlx::query_as::<_, Payment>(
-                "SELECT * FROM payments WHERE id = $1",
-            )
-            .bind(&existing_id)
-            .fetch_one(&mut *tx)
-            .await?;
+            let p = sqlx::query_as::<_, Payment>("SELECT * FROM payments WHERE id = $1")
+                .bind(&existing_id)
+                .fetch_one(&mut *tx)
+                .await?;
             tx.commit().await?;
             return Ok((p, invoice, false));
         }
@@ -123,20 +119,17 @@ async fn create_payment_inner(pool: &PgPool, req: CreatePaymentRequest) -> Resul
 
     // Idempotency check on Xendit payment ID
     if let Some(ref xendit_id) = req.xendit_payment_id {
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM payments WHERE xendit_payment_id = $1",
-        )
-        .bind(xendit_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM payments WHERE xendit_payment_id = $1")
+                .bind(xendit_id)
+                .fetch_optional(&mut *tx)
+                .await?;
 
         if let Some((existing_id,)) = existing {
-            let p = sqlx::query_as::<_, Payment>(
-                "SELECT * FROM payments WHERE id = $1",
-            )
-            .bind(&existing_id)
-            .fetch_one(&mut *tx)
-            .await?;
+            let p = sqlx::query_as::<_, Payment>("SELECT * FROM payments WHERE id = $1")
+                .bind(&existing_id)
+                .fetch_one(&mut *tx)
+                .await?;
             tx.commit().await?;
             return Ok((p, invoice, false));
         }
@@ -169,12 +162,11 @@ async fn create_payment_inner(pool: &PgPool, req: CreatePaymentRequest) -> Resul
     .await?;
 
     // Check if invoice is fully paid
-    let total_paid: Option<Decimal> = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = $1",
-    )
-    .bind(&req.invoice_id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let total_paid: Option<Decimal> =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = $1")
+            .bind(&req.invoice_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
     let total_refunded: Option<Decimal> = sqlx::query_scalar(
         "SELECT COALESCE(SUM(amount), 0) FROM refunds WHERE invoice_id = $1 AND status = 'completed'",

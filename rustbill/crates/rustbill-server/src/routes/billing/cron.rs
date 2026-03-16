@@ -1,7 +1,7 @@
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -29,12 +29,10 @@ async fn run_all(
 
     // 2. Process dunning
     let dunning_config = rustbill_core::billing::dunning::DunningConfig::default();
-    let dunning_processed = rustbill_core::billing::dunning::run_dunning(
-        &state.db,
-        &dunning_config,
-    )
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let dunning_processed =
+        rustbill_core::billing::dunning::run_dunning(&state.db, &dunning_config)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     // 3. Expire licenses
     let licenses_expired = sqlx::query_scalar::<_, i64>(
@@ -116,12 +114,9 @@ async fn process_dunning(
     _user: AdminUser,
 ) -> ApiResult<Json<serde_json::Value>> {
     let config = rustbill_core::billing::dunning::DunningConfig::default();
-    let processed = rustbill_core::billing::dunning::run_dunning(
-        &state.db,
-        &config,
-    )
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let processed = rustbill_core::billing::dunning::run_dunning(&state.db, &config)
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?;
 
     Ok(Json(serde_json::json!({
         "success": true,

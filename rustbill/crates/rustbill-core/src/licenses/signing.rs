@@ -36,7 +36,9 @@ pub fn generate_keypair() -> Result<(String, String)> {
 
     let private_pem = signing_key
         .to_pkcs8_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)
-        .map_err(|e| BillingError::Internal(anyhow::anyhow!("failed to encode private key: {e}")))?;
+        .map_err(|e| {
+            BillingError::Internal(anyhow::anyhow!("failed to encode private key: {e}"))
+        })?;
 
     let public_pem = verifying_key
         .to_public_key_pem(ed25519_dalek::pkcs8::spki::der::pem::LineEnding::LF)

@@ -64,13 +64,12 @@ async fn dunning_creates_reminder_for_5_day_overdue_invoice(pool: PgPool) {
     assert_eq!(body["success"], true);
 
     // Verify dunning_log has a 'reminder' entry for this invoice
-    let log: Vec<(String, String)> = sqlx::query_as(
-        "SELECT invoice_id, step::text FROM dunning_log WHERE invoice_id = $1",
-    )
-    .bind(&invoice_id)
-    .fetch_all(&pool)
-    .await
-    .expect("failed to query dunning_log");
+    let log: Vec<(String, String)> =
+        sqlx::query_as("SELECT invoice_id, step::text FROM dunning_log WHERE invoice_id = $1")
+            .bind(&invoice_id)
+            .fetch_all(&pool)
+            .await
+            .expect("failed to query dunning_log");
 
     assert_eq!(log.len(), 1, "expected exactly one dunning log entry");
     assert_eq!(log[0].0, invoice_id);
@@ -99,13 +98,12 @@ async fn dunning_creates_warning_for_8_day_overdue_invoice(pool: PgPool) {
 
     resp.assert_status_ok();
 
-    let log: Vec<(String, String)> = sqlx::query_as(
-        "SELECT invoice_id, step::text FROM dunning_log WHERE invoice_id = $1",
-    )
-    .bind(&invoice_id)
-    .fetch_all(&pool)
-    .await
-    .expect("failed to query dunning_log");
+    let log: Vec<(String, String)> =
+        sqlx::query_as("SELECT invoice_id, step::text FROM dunning_log WHERE invoice_id = $1")
+            .bind(&invoice_id)
+            .fetch_all(&pool)
+            .await
+            .expect("failed to query dunning_log");
 
     assert_eq!(log.len(), 1, "expected exactly one dunning log entry");
     assert_eq!(log[0].1, "warning");
@@ -134,24 +132,22 @@ async fn dunning_suspends_subscription_for_31_day_overdue_invoice(pool: PgPool) 
     resp.assert_status_ok();
 
     // Check dunning_log has 'suspension' step
-    let step: (String,) = sqlx::query_as(
-        "SELECT step::text FROM dunning_log WHERE invoice_id = $1",
-    )
-    .bind(&invoice_id)
-    .fetch_one(&pool)
-    .await
-    .expect("failed to query dunning_log");
+    let step: (String,) =
+        sqlx::query_as("SELECT step::text FROM dunning_log WHERE invoice_id = $1")
+            .bind(&invoice_id)
+            .fetch_one(&pool)
+            .await
+            .expect("failed to query dunning_log");
 
     assert_eq!(step.0, "suspension");
 
     // Verify subscription is now 'paused'
-    let sub_status: (String,) = sqlx::query_as(
-        "SELECT status::text FROM subscriptions WHERE id = $1",
-    )
-    .bind(&sub_id)
-    .fetch_one(&pool)
-    .await
-    .expect("failed to query subscription");
+    let sub_status: (String,) =
+        sqlx::query_as("SELECT status::text FROM subscriptions WHERE id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .expect("failed to query subscription");
 
     assert_eq!(sub_status.0, "paused");
 }
@@ -185,13 +181,11 @@ async fn dunning_run_twice_no_duplicates(pool: PgPool) {
     resp.assert_status_ok();
 
     // Should still have only one log entry for this invoice + step
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM dunning_log WHERE invoice_id = $1",
-    )
-    .bind(&invoice_id)
-    .fetch_one(&pool)
-    .await
-    .expect("failed to count dunning_log");
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM dunning_log WHERE invoice_id = $1")
+        .bind(&invoice_id)
+        .fetch_one(&pool)
+        .await
+        .expect("failed to count dunning_log");
 
     assert_eq!(count.0, 1, "expected no duplicate dunning entries");
 }

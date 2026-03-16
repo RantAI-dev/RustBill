@@ -1,7 +1,9 @@
 use crate::db::models::{License, LicenseActivation, LicenseStatus};
 use crate::error::{BillingError, Result};
 use crate::licenses::signing::{self, LicensePayload, SignedLicense};
-use crate::licenses::validation::{CreateLicenseRequest, UpdateLicenseRequest, VerifyLicenseRequest};
+use crate::licenses::validation::{
+    CreateLicenseRequest, UpdateLicenseRequest, VerifyLicenseRequest,
+};
 use chrono::Utc;
 use sqlx::PgPool;
 
@@ -11,20 +13,17 @@ use sqlx::PgPool;
 
 /// List all licenses, each enriched with an `activation_count` field.
 pub async fn list_licenses(pool: &PgPool) -> Result<Vec<serde_json::Value>> {
-    let rows = sqlx::query_as::<_, License>(
-        "SELECT * FROM licenses ORDER BY created_at DESC",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows = sqlx::query_as::<_, License>("SELECT * FROM licenses ORDER BY created_at DESC")
+        .fetch_all(pool)
+        .await?;
 
     let mut results = Vec::with_capacity(rows.len());
     for lic in rows {
-        let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM license_activations WHERE license_key = $1",
-        )
-        .bind(&lic.key)
-        .fetch_one(pool)
-        .await?;
+        let count: Option<i64> =
+            sqlx::query_scalar("SELECT COUNT(*) FROM license_activations WHERE license_key = $1")
+                .bind(&lic.key)
+                .fetch_one(pool)
+                .await?;
 
         let mut val = serde_json::to_value(&lic).unwrap();
         let obj = val.as_object_mut().unwrap();
@@ -52,26 +51,22 @@ pub async fn get_license(pool: &PgPool, key: &str) -> Result<License> {
 pub async fn create_license(pool: &PgPool, req: CreateLicenseRequest) -> Result<License> {
     // Resolve customer name from FK if customer_id is provided.
     let customer_name = if let Some(ref cid) = req.customer_id {
-        let name: Option<String> =
-            sqlx::query_scalar("SELECT name FROM customers WHERE id = $1")
-                .bind(cid)
-                .fetch_optional(pool)
-                .await?;
-        name.or(req.customer_name.clone())
-            .unwrap_or_default()
+        let name: Option<String> = sqlx::query_scalar("SELECT name FROM customers WHERE id = $1")
+            .bind(cid)
+            .fetch_optional(pool)
+            .await?;
+        name.or(req.customer_name.clone()).unwrap_or_default()
     } else {
         req.customer_name.clone().unwrap_or_default()
     };
 
     // Resolve product name from FK if product_id is provided.
     let product_name = if let Some(ref pid) = req.product_id {
-        let name: Option<String> =
-            sqlx::query_scalar("SELECT name FROM products WHERE id = $1")
-                .bind(pid)
-                .fetch_optional(pool)
-                .await?;
-        name.or(req.product_name.clone())
-            .unwrap_or_default()
+        let name: Option<String> = sqlx::query_scalar("SELECT name FROM products WHERE id = $1")
+            .bind(pid)
+            .fetch_optional(pool)
+            .await?;
+        name.or(req.product_name.clone()).unwrap_or_default()
     } else {
         req.product_name.clone().unwrap_or_default()
     };
@@ -196,21 +191,19 @@ pub async fn list_activations(pool: &PgPool, license_key: &str) -> Result<Vec<Li
 }
 
 /// Deactivate (remove) a device activation for a license.
-pub async fn deactivate_device(
-    pool: &PgPool,
-    license_key: &str,
-    device_id: &str,
-) -> Result<()> {
-    let result = sqlx::query(
-        "DELETE FROM license_activations WHERE license_key = $1 AND device_id = $2",
-    )
-    .bind(license_key)
-    .bind(device_id)
-    .execute(pool)
-    .await?;
+pub async fn deactivate_device(pool: &PgPool, license_key: &str, device_id: &str) -> Result<()> {
+    let result =
+        sqlx::query("DELETE FROM license_activations WHERE license_key = $1 AND device_id = $2")
+            .bind(license_key)
+            .bind(device_id)
+            .execute(pool)
+            .await?;
 
     if result.rows_affected() == 0 {
-        return Err(BillingError::not_found("activation", format!("{license_key}/{device_id}")));
+        return Err(BillingError::not_found(
+            "activation",
+            format!("{license_key}/{device_id}"),
+        ));
     }
     Ok(())
 }
@@ -222,17 +215,15 @@ pub async fn deactivate_device(
 /// Retrieve the stored ED25519 keypair from system_settings.
 /// Returns `(public_key_pem, private_key_pem)` or `None` if not yet generated.
 pub async fn get_keypair(pool: &PgPool) -> Result<Option<(String, String)>> {
-    let pub_row: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM system_settings WHERE key = 'license_public_key'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let pub_row: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = 'license_public_key'")
+            .fetch_optional(pool)
+            .await?;
 
-    let priv_row: Option<String> = sqlx::query_scalar(
-        "SELECT value FROM system_settings WHERE key = 'license_private_key'",
-    )
-    .fetch_optional(pool)
-    .await?;
+    let priv_row: Option<String> =
+        sqlx::query_scalar("SELECT value FROM system_settings WHERE key = 'license_private_key'")
+            .fetch_optional(pool)
+            .await?;
 
     match (pub_row, priv_row) {
         (Some(pub_pem), Some(priv_pem)) => Ok(Some((pub_pem, priv_pem))),
@@ -412,7 +403,9 @@ pub async fn sign_license_by_key(pool: &PgPool, key: &str) -> Result<License> {
 
     let keypair = get_keypair(pool).await?;
     let (_public_pem, private_pem) = keypair.ok_or_else(|| {
-        BillingError::bad_request("no signing keypair exists — generate one first via POST /api/licenses/keypair")
+        BillingError::bad_request(
+            "no signing keypair exists — generate one first via POST /api/licenses/keypair",
+        )
     })?;
 
     let payload = build_payload(&license);
@@ -440,22 +433,17 @@ pub async fn sign_license_by_key(pool: &PgPool, key: &str) -> Result<License> {
 
 /// Verify an offline license file. Accepts the raw license file content (PEM-style format).
 /// Returns a JSON result indicating validity.
-pub async fn verify_license_file(
-    pool: &PgPool,
-    file_content: &str,
-) -> Result<serde_json::Value> {
+pub async fn verify_license_file(pool: &PgPool, file_content: &str) -> Result<serde_json::Value> {
     let keypair = get_keypair(pool).await?;
-    let (public_pem, _private_pem) = keypair.ok_or_else(|| {
-        BillingError::bad_request("no signing keypair exists — cannot verify")
-    })?;
+    let (public_pem, _private_pem) = keypair
+        .ok_or_else(|| BillingError::bad_request("no signing keypair exists — cannot verify"))?;
 
     let signed = signing::parse_license_file(file_content)?;
     let sig_valid = signing::verify_license(&signed, &public_pem)?;
 
     // Check expiry
     let expired = if !signed.payload.expires_at.is_empty() {
-        if let Ok(exp) = chrono::NaiveDate::parse_from_str(&signed.payload.expires_at, "%Y-%m-%d")
-        {
+        if let Ok(exp) = chrono::NaiveDate::parse_from_str(&signed.payload.expires_at, "%Y-%m-%d") {
             Utc::now().date_naive() > exp
         } else {
             false

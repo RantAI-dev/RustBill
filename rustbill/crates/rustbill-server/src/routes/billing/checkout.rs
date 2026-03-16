@@ -1,11 +1,14 @@
-use axum::{extract::{Query, State}, routing::get, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Query, State},
+    routing::get,
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
-    Router::new()
-        .route("/", get(get_checkout_url))
+    Router::new().route("/", get(get_checkout_url))
 }
 
 #[derive(serde::Deserialize)]
@@ -23,8 +26,12 @@ async fn get_checkout_url(
     let provider = params.provider.as_deref().unwrap_or("stripe");
 
     // Determine the origin for redirect URLs
-    let origin = std::env::var("PUBLIC_URL")
-        .unwrap_or_else(|_| format!("http://{}:{}", state.config.server.host, state.config.server.port));
+    let origin = std::env::var("PUBLIC_URL").unwrap_or_else(|_| {
+        format!(
+            "http://{}:{}",
+            state.config.server.host, state.config.server.port
+        )
+    });
 
     // Build provider settings based on the selected provider
     let setting_keys: &[&str] = match provider {
@@ -33,7 +40,10 @@ async fn get_checkout_url(
         "lemonsqueezy" => &["lemonsqueezy_api_key", "lemonsqueezy_store_id"],
         _ => &[],
     };
-    let settings = state.provider_cache.get_provider_settings(setting_keys).await;
+    let settings = state
+        .provider_cache
+        .get_provider_settings(setting_keys)
+        .await;
 
     let result = rustbill_core::billing::checkout::create_checkout(
         &state.db,

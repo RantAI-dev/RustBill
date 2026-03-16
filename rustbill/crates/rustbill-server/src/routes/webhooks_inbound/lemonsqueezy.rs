@@ -1,14 +1,18 @@
-use axum::{extract::State, http::{HeaderMap, StatusCode}, routing::post, Router};
 use crate::app::SharedState;
 use crate::routes::ApiResult;
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    routing::post,
+    Router,
+};
 use hmac::{Hmac, Mac};
 use rust_decimal::Decimal;
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 pub fn router() -> Router<SharedState> {
-    Router::new()
-        .route("/", post(handle_webhook))
+    Router::new().route("/", post(handle_webhook))
 }
 
 /// Verify a LemonSqueezy HMAC-SHA256 signature.
@@ -36,10 +40,16 @@ async fn handle_webhook(
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
 
-    tracing::info!(signature_len = signature.len(), "Received LemonSqueezy webhook");
+    tracing::info!(
+        signature_len = signature.len(),
+        "Received LemonSqueezy webhook"
+    );
 
     // Verify HMAC-SHA256 signature
-    let secret = state.provider_cache.get("lemonsqueezy_webhook_secret").await;
+    let secret = state
+        .provider_cache
+        .get("lemonsqueezy_webhook_secret")
+        .await;
     if secret.is_empty() {
         tracing::warn!("LemonSqueezy webhook secret not configured — skipping signature verification (dev mode)");
     } else if !verify_lemonsqueezy_signature(&body, signature, &secret) {
@@ -47,10 +57,9 @@ async fn handle_webhook(
         return Err(rustbill_core::error::BillingError::Unauthorized.into());
     }
 
-    let event: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| rustbill_core::error::BillingError::BadRequest(
-            format!("Invalid JSON: {e}"),
-        ))?;
+    let event: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        rustbill_core::error::BillingError::BadRequest(format!("Invalid JSON: {e}"))
+    })?;
 
     let event_type = headers
         .get("x-event-name")
@@ -77,16 +86,18 @@ async fn handle_webhook(
             // Find invoice by custom_data.invoiceId embedded in the checkout
             let invoice_id = event["meta"]["custom_data"]["invoiceId"]
                 .as_str()
-                .or(event["data"]["attributes"]["first_order_item"]["custom_data"]["invoiceId"].as_str());
+                .or(
+                    event["data"]["attributes"]["first_order_item"]["custom_data"]["invoiceId"]
+                        .as_str(),
+                );
 
             if let Some(invoice_id) = invoice_id {
-                let invoice: Option<rustbill_core::db::models::Invoice> = sqlx::query_as(
-                    "SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL",
-                )
-                .bind(invoice_id)
-                .fetch_optional(&state.db)
-                .await
-                .map_err(rustbill_core::error::BillingError::from)?;
+                let invoice: Option<rustbill_core::db::models::Invoice> =
+                    sqlx::query_as("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+                        .bind(invoice_id)
+                        .fetch_optional(&state.db)
+                        .await
+                        .map_err(rustbill_core::error::BillingError::from)?;
 
                 if let Some(invoice) = invoice {
                     if invoice.status != rustbill_core::db::models::InvoiceStatus::Paid {
@@ -108,9 +119,7 @@ async fn handle_webhook(
                             .map(|a| Decimal::from(a) / Decimal::from(100)) // LS amounts are in cents
                             .unwrap_or(invoice.total);
 
-                        let ls_order_id = event["data"]["id"]
-                            .as_str()
-                            .map(|s| s.to_string());
+                        let ls_order_id = event["data"]["id"].as_str().map(|s| s.to_string());
 
                         // Store LS order ID on invoice
                         if let Some(ref order_id) = ls_order_id {
@@ -128,7 +137,10 @@ async fn handle_webhook(
                             invoice_id: invoice.id.clone(),
                             amount,
                             method: rustbill_core::db::models::PaymentMethod::Lemonsqueezy,
-                            reference: ls_order_id.as_deref().map(|id| format!("lemonsqueezy:{id}")).or(Some("lemonsqueezy:unknown".to_string())),
+                            reference: ls_order_id
+                                .as_deref()
+                                .map(|id| format!("lemonsqueezy:{id}"))
+                                .or(Some("lemonsqueezy:unknown".to_string())),
                             paid_at: Some(now),
                             notes: None,
                             stripe_payment_intent_id: None,
@@ -136,12 +148,22 @@ async fn handle_webhook(
                             lemonsqueezy_order_id: ls_order_id,
                         };
 
-                        if let Err(e) = rustbill_core::billing::payments::create_payment_with_notification(&state.db, req, state.email_sender.as_ref()).await {
+                        if let Err(e) =
+                            rustbill_core::billing::payments::create_payment_with_notification(
+                                &state.db,
+                                req,
+                                state.email_sender.as_ref(),
+                            )
+                            .await
+                        {
                             tracing::warn!("Failed to create payment record for LemonSqueezy order_created: {e}");
                         }
                     }
                 } else {
-                    tracing::warn!(invoice_id, "No matching invoice found for LemonSqueezy order_created");
+                    tracing::warn!(
+                        invoice_id,
+                        "No matching invoice found for LemonSqueezy order_created"
+                    );
                 }
             } else {
                 tracing::warn!("LemonSqueezy order_created event missing custom_data.invoiceId");
@@ -152,7 +174,10 @@ async fn handle_webhook(
             // Create refund record
             let invoice_id = event["meta"]["custom_data"]["invoiceId"]
                 .as_str()
-                .or(event["data"]["attributes"]["first_order_item"]["custom_data"]["invoiceId"].as_str());
+                .or(
+                    event["data"]["attributes"]["first_order_item"]["custom_data"]["invoiceId"]
+                        .as_str(),
+                );
 
             if let Some(invoice_id) = invoice_id {
                 // Find the most recent payment for this invoice via LemonSqueezy
@@ -179,11 +204,18 @@ async fn handle_webhook(
                         stripe_refund_id: None,
                     };
 
-                    if let Err(e) = rustbill_core::billing::refunds::create_refund(&state.db, req).await {
-                        tracing::warn!("Failed to create refund record for LemonSqueezy order_refunded: {e}");
+                    if let Err(e) =
+                        rustbill_core::billing::refunds::create_refund(&state.db, req).await
+                    {
+                        tracing::warn!(
+                            "Failed to create refund record for LemonSqueezy order_refunded: {e}"
+                        );
                     }
                 } else {
-                    tracing::warn!(invoice_id, "No matching payment found for LemonSqueezy order_refunded");
+                    tracing::warn!(
+                        invoice_id,
+                        "No matching payment found for LemonSqueezy order_refunded"
+                    );
                 }
             }
         }

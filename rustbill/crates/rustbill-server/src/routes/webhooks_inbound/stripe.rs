@@ -1,14 +1,18 @@
-use axum::{extract::State, http::{HeaderMap, StatusCode}, routing::post, Router};
 use crate::app::SharedState;
 use crate::routes::ApiResult;
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    routing::post,
+    Router,
+};
 use hmac::{Hmac, Mac};
 use rust_decimal::Decimal;
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 pub fn router() -> Router<SharedState> {
-    Router::new()
-        .route("/", post(handle_webhook))
+    Router::new().route("/", post(handle_webhook))
 }
 
 /// Parse the Stripe-Signature header into (timestamp, signature_hex).
@@ -31,8 +35,8 @@ fn parse_stripe_signature(header: &str) -> Option<(String, String)> {
 
 /// Verify a Stripe webhook signature.
 fn verify_stripe_signature(body: &str, sig_header: &str, secret: &str) -> Result<(), &'static str> {
-    let (timestamp, sig_hex) = parse_stripe_signature(sig_header)
-        .ok_or("Invalid stripe-signature header format")?;
+    let (timestamp, sig_hex) =
+        parse_stripe_signature(sig_header).ok_or("Invalid stripe-signature header format")?;
 
     // Check timestamp freshness (reject if > 300s old)
     let ts: i64 = timestamp.parse().map_err(|_| "Invalid timestamp")?;
@@ -43,8 +47,8 @@ fn verify_stripe_signature(body: &str, sig_header: &str, secret: &str) -> Result
 
     // Compute expected signature: HMAC-SHA256(timestamp + "." + body, secret)
     let signed_payload = format!("{timestamp}.{body}");
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-        .map_err(|_| "Invalid webhook secret")?;
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(secret.as_bytes()).map_err(|_| "Invalid webhook secret")?;
     mac.update(signed_payload.as_bytes());
     let expected = mac.finalize().into_bytes();
 
@@ -73,19 +77,19 @@ async fn handle_webhook(
     // Verify signature using the Stripe webhook secret from provider_cache
     let secret = state.provider_cache.get("stripe_webhook_secret").await;
     if secret.is_empty() {
-        tracing::warn!("Stripe webhook secret not configured — skipping signature verification (dev mode)");
+        tracing::warn!(
+            "Stripe webhook secret not configured — skipping signature verification (dev mode)"
+        );
     } else {
-        verify_stripe_signature(&body, signature, &secret)
-            .map_err(|e| {
-                tracing::warn!("Stripe signature verification failed: {e}");
-                rustbill_core::error::BillingError::Unauthorized
-            })?;
+        verify_stripe_signature(&body, signature, &secret).map_err(|e| {
+            tracing::warn!("Stripe signature verification failed: {e}");
+            rustbill_core::error::BillingError::Unauthorized
+        })?;
     }
 
-    let event: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| rustbill_core::error::BillingError::BadRequest(
-            format!("Invalid JSON: {e}"),
-        ))?;
+    let event: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        rustbill_core::error::BillingError::BadRequest(format!("Invalid JSON: {e}"))
+    })?;
 
     let event_type = event["type"].as_str().unwrap_or("unknown");
     tracing::info!(event_type, "Processing Stripe event");
@@ -143,9 +147,8 @@ async fn handle_webhook(
                             .map(|a| Decimal::from(a) / Decimal::from(100)) // Stripe amounts are in cents
                             .unwrap_or(invoice.total);
 
-                        let stripe_payment_intent_id = obj["payment_intent"]
-                            .as_str()
-                            .map(|s| s.to_string());
+                        let stripe_payment_intent_id =
+                            obj["payment_intent"].as_str().map(|s| s.to_string());
 
                         let req = rustbill_core::billing::payments::CreatePaymentRequest {
                             invoice_id: invoice.id.clone(),
@@ -159,12 +162,22 @@ async fn handle_webhook(
                             lemonsqueezy_order_id: None,
                         };
 
-                        if let Err(e) = rustbill_core::billing::payments::create_payment_with_notification(&state.db, req, state.email_sender.as_ref()).await {
+                        if let Err(e) =
+                            rustbill_core::billing::payments::create_payment_with_notification(
+                                &state.db,
+                                req,
+                                state.email_sender.as_ref(),
+                            )
+                            .await
+                        {
                             tracing::warn!("Failed to create payment record for stripe event: {e}");
                         }
                     }
                 } else {
-                    tracing::warn!(stripe_invoice_id = stripe_id, "No matching invoice found for Stripe event");
+                    tracing::warn!(
+                        stripe_invoice_id = stripe_id,
+                        "No matching invoice found for Stripe event"
+                    );
                 }
             }
         }
@@ -210,13 +223,12 @@ async fn handle_webhook(
             // Find payment by stripe_payment_intent_id (charge's payment_intent)
             let payment_intent_id = obj["payment_intent"].as_str();
             if let Some(pi_id) = payment_intent_id {
-                let payment: Option<rustbill_core::db::models::Payment> = sqlx::query_as(
-                    "SELECT * FROM payments WHERE stripe_payment_intent_id = $1",
-                )
-                .bind(pi_id)
-                .fetch_optional(&state.db)
-                .await
-                .map_err(rustbill_core::error::BillingError::from)?;
+                let payment: Option<rustbill_core::db::models::Payment> =
+                    sqlx::query_as("SELECT * FROM payments WHERE stripe_payment_intent_id = $1")
+                        .bind(pi_id)
+                        .fetch_optional(&state.db)
+                        .await
+                        .map_err(rustbill_core::error::BillingError::from)?;
 
                 if let Some(payment) = payment {
                     let req = rustbill_core::billing::refunds::CreateRefundRequest {
@@ -228,11 +240,18 @@ async fn handle_webhook(
                         stripe_refund_id: Some(stripe_charge_id.to_string()),
                     };
 
-                    if let Err(e) = rustbill_core::billing::refunds::create_refund(&state.db, req).await {
-                        tracing::warn!("Failed to create refund record for stripe charge.refunded: {e}");
+                    if let Err(e) =
+                        rustbill_core::billing::refunds::create_refund(&state.db, req).await
+                    {
+                        tracing::warn!(
+                            "Failed to create refund record for stripe charge.refunded: {e}"
+                        );
                     }
                 } else {
-                    tracing::warn!(payment_intent_id = pi_id, "No matching payment found for Stripe charge.refunded");
+                    tracing::warn!(
+                        payment_intent_id = pi_id,
+                        "No matching payment found for Stripe charge.refunded"
+                    );
                 }
             }
         }

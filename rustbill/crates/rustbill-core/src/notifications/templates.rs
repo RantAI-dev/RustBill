@@ -1,6 +1,11 @@
 //! HTML email templates for billing notifications.
 
-pub fn invoice_created(customer_name: &str, invoice_number: &str, total: &str, currency: &str) -> (String, String) {
+pub fn invoice_created(
+    customer_name: &str,
+    invoice_number: &str,
+    total: &str,
+    currency: &str,
+) -> (String, String) {
     let subject = format!("New Invoice {invoice_number}");
     let html = format!(
         r#"<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
@@ -15,7 +20,12 @@ pub fn invoice_created(customer_name: &str, invoice_number: &str, total: &str, c
     (subject, html)
 }
 
-pub fn invoice_paid(customer_name: &str, invoice_number: &str, total: &str, currency: &str) -> (String, String) {
+pub fn invoice_paid(
+    customer_name: &str,
+    invoice_number: &str,
+    total: &str,
+    currency: &str,
+) -> (String, String) {
     let subject = format!("Payment Received — Invoice {invoice_number}");
     let html = format!(
         r#"<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
@@ -42,7 +52,12 @@ pub fn payment_received(customer_name: &str, amount: &str, method: &str) -> (Str
     (subject, html)
 }
 
-pub fn invoice_overdue(customer_name: &str, invoice_number: &str, total: &str, currency: &str) -> (String, String) {
+pub fn invoice_overdue(
+    customer_name: &str,
+    invoice_number: &str,
+    total: &str,
+    currency: &str,
+) -> (String, String) {
     let subject = format!("Invoice {invoice_number} is Overdue");
     let html = format!(
         r#"<div style="font-family:sans-serif;max-width:600px;margin:0 auto">

@@ -8,13 +8,12 @@ use sqlx::PgPool;
 
 /// Look up a customer's email address by ID.
 async fn customer_email(pool: &PgPool, customer_id: &str) -> Option<(String, String)> {
-    let row: Option<(String, String)> = sqlx::query_as(
-        "SELECT COALESCE(billing_email, email), name FROM customers WHERE id = $1",
-    )
-    .bind(customer_id)
-    .fetch_optional(pool)
-    .await
-    .ok()?;
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT COALESCE(billing_email, email), name FROM customers WHERE id = $1")
+            .bind(customer_id)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
 
     row
 }
@@ -34,13 +33,20 @@ pub async fn notify_invoice_created(
     };
 
     let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(customer_id, "Could not find customer email for invoice notification");
+        tracing::warn!(
+            customer_id,
+            "Could not find customer email for invoice notification"
+        );
         return;
     };
 
     let (subject, html) = templates::invoice_created(&name, invoice_number, total, currency);
     if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(customer_id, invoice_number, "Failed to send invoice created email");
+        tracing::warn!(
+            customer_id,
+            invoice_number,
+            "Failed to send invoice created email"
+        );
     }
 }
 
@@ -60,13 +66,21 @@ pub async fn notify_invoice_issued(
     };
 
     let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(customer_id, "Could not find customer email for invoice issued notification");
+        tracing::warn!(
+            customer_id,
+            "Could not find customer email for invoice issued notification"
+        );
         return;
     };
 
-    let (subject, html) = templates::invoice_issued(&name, invoice_number, total, currency, due_date);
+    let (subject, html) =
+        templates::invoice_issued(&name, invoice_number, total, currency, due_date);
     if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(customer_id, invoice_number, "Failed to send invoice issued email");
+        tracing::warn!(
+            customer_id,
+            invoice_number,
+            "Failed to send invoice issued email"
+        );
     }
 }
 
@@ -84,7 +98,10 @@ pub async fn notify_payment_received(
     };
 
     let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(customer_id, "Could not find customer email for payment notification");
+        tracing::warn!(
+            customer_id,
+            "Could not find customer email for payment notification"
+        );
         return;
     };
 
@@ -109,13 +126,20 @@ pub async fn notify_invoice_paid(
     };
 
     let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(customer_id, "Could not find customer email for invoice paid notification");
+        tracing::warn!(
+            customer_id,
+            "Could not find customer email for invoice paid notification"
+        );
         return;
     };
 
     let (subject, html) = templates::invoice_paid(&name, invoice_number, total, currency);
     if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(customer_id, invoice_number, "Failed to send invoice paid email");
+        tracing::warn!(
+            customer_id,
+            invoice_number,
+            "Failed to send invoice paid email"
+        );
     }
 }
 
@@ -136,7 +160,10 @@ pub async fn notify_subscription_renewed(
     };
 
     let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(customer_id, "Could not find customer email for renewal notification");
+        tracing::warn!(
+            customer_id,
+            "Could not find customer email for renewal notification"
+        );
         return;
     };
 

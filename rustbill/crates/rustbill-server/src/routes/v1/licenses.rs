@@ -1,6 +1,11 @@
-use axum::{extract::{Path, Query, State}, http::StatusCode, routing::{get, post}, Json, Router};
 use crate::app::SharedState;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -157,8 +162,7 @@ async fn verify(
 
     // Check expiry
     let expired = license["expires_at"].as_str().map_or(false, |exp| {
-        chrono::DateTime::parse_from_rfc3339(exp)
-            .map_or(false, |dt| dt < chrono::Utc::now())
+        chrono::DateTime::parse_from_rfc3339(exp).map_or(false, |dt| dt < chrono::Utc::now())
     });
 
     if expired {
@@ -173,13 +177,12 @@ async fn verify(
     if let Some(device_id) = device_id {
         let max_activations = license["max_activations"].as_i64().unwrap_or(i64::MAX);
 
-        let activation_count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM license_activations WHERE license_id = $1",
-        )
-        .bind(license["id"].as_str().unwrap_or_default())
-        .fetch_one(&state.db)
-        .await
-        .map_err(rustbill_core::error::BillingError::from)?;
+        let activation_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM license_activations WHERE license_id = $1")
+                .bind(license["id"].as_str().unwrap_or_default())
+                .fetch_one(&state.db)
+                .await
+                .map_err(rustbill_core::error::BillingError::from)?;
 
         // Check if this device is already activated
         let existing: Option<(String,)> = sqlx::query_as(

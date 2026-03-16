@@ -1,6 +1,6 @@
 use crate::db::models::{Deal, ProductType};
-use crate::error::{BillingError, Result};
 use crate::deals::validation::{CreateDealRequest, UpdateDealRequest};
+use crate::error::{BillingError, Result};
 use rand::Rng;
 use sqlx::PgPool;
 
@@ -62,12 +62,11 @@ pub async fn get_deal(pool: &PgPool, id: &str) -> Result<Deal> {
 pub async fn create_deal(pool: &PgPool, req: CreateDealRequest) -> Result<Deal> {
     // Auto-populate from customer FK if provided
     let (company, contact, email) = if let Some(ref cid) = req.customer_id {
-        let cust: Option<(String, String, String)> = sqlx::query_as(
-            "SELECT name, contact, email FROM customers WHERE id = $1",
-        )
-        .bind(cid)
-        .fetch_optional(pool)
-        .await?;
+        let cust: Option<(String, String, String)> =
+            sqlx::query_as("SELECT name, contact, email FROM customers WHERE id = $1")
+                .bind(cid)
+                .fetch_optional(pool)
+                .await?;
 
         match cust {
             Some((name, ct, em)) => (
@@ -87,12 +86,11 @@ pub async fn create_deal(pool: &PgPool, req: CreateDealRequest) -> Result<Deal> 
 
     // Auto-populate from product FK if provided
     let (product_name, product_type) = if let Some(ref pid) = req.product_id {
-        let prod: Option<(String, ProductType)> = sqlx::query_as(
-            "SELECT name, product_type FROM products WHERE id = $1",
-        )
-        .bind(pid)
-        .fetch_optional(pool)
-        .await?;
+        let prod: Option<(String, ProductType)> =
+            sqlx::query_as("SELECT name, product_type FROM products WHERE id = $1")
+                .bind(pid)
+                .fetch_optional(pool)
+                .await?;
 
         match prod {
             Some((name, pt)) => (
@@ -115,9 +113,9 @@ pub async fn create_deal(pool: &PgPool, req: CreateDealRequest) -> Result<Deal> 
         req.license_key
     };
 
-    let date = req.date.unwrap_or_else(|| {
-        chrono::Utc::now().format("%Y-%m-%d").to_string()
-    });
+    let date = req
+        .date
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
 
     let row = sqlx::query_as::<_, Deal>(
         r#"

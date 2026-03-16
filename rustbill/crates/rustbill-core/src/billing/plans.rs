@@ -104,10 +104,7 @@ pub async fn get_plan(pool: &PgPool, id: &str) -> Result<PricingPlan> {
 pub async fn create_plan(pool: &PgPool, req: CreatePlanRequest) -> Result<PricingPlan> {
     req.validate().map_err(BillingError::from_validation)?;
 
-    let tiers_json = req
-        .tiers
-        .as_ref()
-        .map(|t| serde_json::to_value(t).unwrap());
+    let tiers_json = req.tiers.as_ref().map(|t| serde_json::to_value(t).unwrap());
 
     let row = sqlx::query_as::<_, PricingPlan>(
         r#"
@@ -140,9 +137,9 @@ pub async fn update_plan(pool: &PgPool, id: &str, req: UpdatePlanRequest) -> Res
     // Ensure plan exists
     let _existing = get_plan(pool, id).await?;
 
-    let tiers_json: Option<Option<serde_json::Value>> = req.tiers.map(|opt| {
-        opt.map(|t| serde_json::to_value(t).unwrap())
-    });
+    let tiers_json: Option<Option<serde_json::Value>> = req
+        .tiers
+        .map(|opt| opt.map(|t| serde_json::to_value(t).unwrap()));
 
     let row = sqlx::query_as::<_, PricingPlan>(
         r#"

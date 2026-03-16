@@ -1,7 +1,12 @@
-use axum::{extract::{Query, State}, http::StatusCode, routing::{get, post}, Json, Router};
-use serde::Deserialize;
-use crate::app::SharedState;
 use super::ApiResult;
+use crate::app::SharedState;
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+use serde::Deserialize;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -16,15 +21,16 @@ pub fn router() -> Router<SharedState> {
 // Keycloak OAuth
 // ---------------------------------------------------------------------------
 
-async fn keycloak_login(
-    State(state): State<SharedState>,
-) -> ApiResult<axum::response::Response> {
+async fn keycloak_login(State(state): State<SharedState>) -> ApiResult<axum::response::Response> {
     use axum::response::IntoResponse;
     use rustbill_core::error::BillingError;
 
-    let kc = state.config.auth.keycloak.as_ref().ok_or_else(|| {
-        BillingError::bad_request("Keycloak is not configured")
-    })?;
+    let kc = state
+        .config
+        .auth
+        .keycloak
+        .as_ref()
+        .ok_or_else(|| BillingError::bad_request("Keycloak is not configured"))?;
 
     // Generate random CSRF state (32 bytes -> 64 hex chars)
     let csrf_state = {
@@ -46,9 +52,8 @@ async fn keycloak_login(
     let auth_url = rustbill_core::auth::keycloak::build_auth_url(kc, &callback_url, &csrf_state);
 
     // Set oauth_state cookie and redirect
-    let state_cookie = format!(
-        "oauth_state={csrf_state}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600"
-    );
+    let state_cookie =
+        format!("oauth_state={csrf_state}; HttpOnly; SameSite=Lax; Path=/; Max-Age=600");
 
     Ok((
         StatusCode::TEMPORARY_REDIRECT,
@@ -56,7 +61,8 @@ async fn keycloak_login(
             (axum::http::header::LOCATION, auth_url),
             (axum::http::header::SET_COOKIE, state_cookie),
         ],
-    ).into_response())
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
@@ -72,9 +78,12 @@ async fn keycloak_callback(
 ) -> ApiResult<axum::response::Response> {
     use rustbill_core::error::BillingError;
 
-    let kc = state.config.auth.keycloak.as_ref().ok_or_else(|| {
-        BillingError::bad_request("Keycloak is not configured")
-    })?;
+    let kc = state
+        .config
+        .auth
+        .keycloak
+        .as_ref()
+        .ok_or_else(|| BillingError::bad_request("Keycloak is not configured"))?;
 
     // Extract and validate the oauth_state cookie
     let stored_state = headers
@@ -102,10 +111,14 @@ async fn keycloak_callback(
     );
 
     // Exchange code for tokens
-    let (access_token, id_token) =
-        rustbill_core::auth::keycloak::exchange_code(&state.http_client, kc, &params.code, &callback_url)
-            .await
-            .map_err(|e| BillingError::bad_request(format!("Token exchange failed: {e}")))?;
+    let (access_token, id_token) = rustbill_core::auth::keycloak::exchange_code(
+        &state.http_client,
+        kc,
+        &params.code,
+        &callback_url,
+    )
+    .await
+    .map_err(|e| BillingError::bad_request(format!("Token exchange failed: {e}")))?;
 
     // Try to extract user info from id_token first, fall back to userinfo endpoint
     let user_id = if let Some(ref id_token_str) = id_token {
@@ -153,7 +166,10 @@ async fn keycloak_callback(
             None => {
                 // Fall back to userinfo endpoint
                 rustbill_core::auth::keycloak::find_or_create_user(
-                    &state.db, kc, &access_token, &state.http_client,
+                    &state.db,
+                    kc,
+                    &access_token,
+                    &state.http_client,
                 )
                 .await?
             }
@@ -161,7 +177,10 @@ async fn keycloak_callback(
     } else {
         // No id_token, use userinfo endpoint
         rustbill_core::auth::keycloak::find_or_create_user(
-            &state.db, kc, &access_token, &state.http_client,
+            &state.db,
+            kc,
+            &access_token,
+            &state.http_client,
         )
         .await?
     };
@@ -226,8 +245,17 @@ async fn login(
     }
 
     // Find user by email (case-insensitive)
-    let user = sqlx::query_as::<_, (String, String, String, Option<String>, rustbill_core::db::models::UserRole)>(
-        "SELECT id, name, email, password_hash, role FROM users WHERE LOWER(email) = LOWER($1)"
+    let user = sqlx::query_as::<
+        _,
+        (
+            String,
+            String,
+            String,
+            Option<String>,
+            rustbill_core::db::models::UserRole,
+        ),
+    >(
+        "SELECT id, name, email, password_hash, role FROM users WHERE LOWER(email) = LOWER($1)",
     )
     .bind(&body.email)
     .fetch_optional(&state.db)
@@ -251,12 +279,9 @@ async fn login(
     }
 
     // Create session
-    let token = rustbill_core::auth::create_session(
-        &state.db,
-        &id,
-        state.config.auth.session_expiry_days,
-    )
-    .await?;
+    let token =
+        rustbill_core::auth::create_session(&state.db, &id, state.config.auth.session_expiry_days)
+            .await?;
 
     // Set cookie
     let cookie = format!(
@@ -270,7 +295,8 @@ async fn login(
         Json(serde_json::json!({
             "user": { "id": id, "name": name, "email": email, "role": role }
         })),
-    ).into_response();
+    )
+        .into_response();
 
     Ok(response)
 }
@@ -309,7 +335,8 @@ async fn logout(
         StatusCode::OK,
         [(axum::http::header::SET_COOKIE, clear_cookie.to_string())],
         Json(response_json),
-    ).into_response())
+    )
+        .into_response())
 }
 
 async fn me(

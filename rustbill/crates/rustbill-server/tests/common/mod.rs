@@ -1,11 +1,11 @@
 //! Shared test helpers for integration tests.
 
 use axum_test::TestServer;
-use rustbill_core::auth::api_key::{generate_api_key, hash_api_key, get_key_prefix};
+use rustbill_core::auth::api_key::{generate_api_key, get_key_prefix, hash_api_key};
 use rustbill_core::auth::password::hash_password;
 use rustbill_core::config::{AppConfig, AuthConfig, CronConfig, DatabaseConfig, ServerConfig};
 use rustbill_core::settings::provider_settings::ProviderSettingsCache;
-use rustbill_server::app::{AppState, build_router};
+use rustbill_server::app::{build_router, AppState};
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -162,11 +162,7 @@ pub async fn create_test_plan(pool: &PgPool, product_id: &str) -> String {
 }
 
 /// Insert a test subscription. Returns the subscription ID.
-pub async fn create_test_subscription(
-    pool: &PgPool,
-    customer_id: &str,
-    plan_id: &str,
-) -> String {
+pub async fn create_test_subscription(pool: &PgPool, customer_id: &str, plan_id: &str) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().naive_utc();
     let period_end = now + chrono::Duration::days(30);

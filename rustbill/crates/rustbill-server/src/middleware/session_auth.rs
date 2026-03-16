@@ -1,5 +1,6 @@
 //! Session authentication middleware: extracts and validates session cookie.
 
+use crate::app::SharedState;
 use axum::{
     extract::State,
     http::{Request, StatusCode},
@@ -7,7 +8,6 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use crate::app::SharedState;
 
 /// Middleware that requires a valid session cookie.
 pub async fn require_session(
@@ -21,15 +21,14 @@ pub async fn require_session(
         .get("cookie")
         .and_then(|v| v.to_str().ok())
         .and_then(|cookies| {
-            cookies.split(';')
-                .find_map(|c| {
-                    let c = c.trim();
-                    if c.starts_with("session=") {
-                        Some(c[8..].to_string())
-                    } else {
-                        None
-                    }
-                })
+            cookies.split(';').find_map(|c| {
+                let c = c.trim();
+                if c.starts_with("session=") {
+                    Some(c[8..].to_string())
+                } else {
+                    None
+                }
+            })
         });
 
     let token = match token {
@@ -38,7 +37,8 @@ pub async fn require_session(
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({ "error": "Unauthorized" })),
-            ).into_response();
+            )
+                .into_response();
         }
     };
 
@@ -48,11 +48,10 @@ pub async fn require_session(
             req.extensions_mut().insert(user);
             next.run(req).await
         }
-        _ => {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({ "error": "Unauthorized" })),
-            ).into_response()
-        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "Unauthorized" })),
+        )
+            .into_response(),
     }
 }

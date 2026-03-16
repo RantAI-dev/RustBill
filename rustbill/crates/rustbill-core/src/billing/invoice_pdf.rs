@@ -10,13 +10,11 @@ pub async fn generate_invoice_pdf(pool: &PgPool, invoice_id: &str) -> Result<Vec
     let invoice = crate::billing::invoices::get_invoice(pool, invoice_id).await?;
 
     // Fetch customer
-    let customer = sqlx::query_as::<_, Customer>(
-        "SELECT * FROM customers WHERE id = $1",
-    )
-    .bind(&invoice.customer_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| BillingError::not_found("customer", &invoice.customer_id))?;
+    let customer = sqlx::query_as::<_, Customer>("SELECT * FROM customers WHERE id = $1")
+        .bind(&invoice.customer_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| BillingError::not_found("customer", &invoice.customer_id))?;
 
     // Fetch line items
     let items = crate::billing::invoices::list_invoice_items(pool, invoice_id).await?;
@@ -38,13 +36,7 @@ pub async fn generate_invoice_pdf(pool: &PgPool, invoice_id: &str) -> Result<Vec
     // ---- Header ----
     current_layer.use_text("INVOICE", 20.0, Mm(20.0), Mm(y), &font_bold);
     y -= 10.0;
-    current_layer.use_text(
-        &invoice.invoice_number,
-        12.0,
-        Mm(20.0),
-        Mm(y),
-        &font,
-    );
+    current_layer.use_text(&invoice.invoice_number, 12.0, Mm(20.0), Mm(y), &font);
 
     // Status on the right
     current_layer.use_text(
@@ -229,9 +221,9 @@ pub async fn generate_invoice_pdf(pool: &PgPool, invoice_id: &str) -> Result<Vec
     );
 
     // Save to bytes
-    let bytes = doc.save_to_bytes().map_err(|e| {
-        BillingError::Internal(anyhow::anyhow!("PDF generation failed: {e}"))
-    })?;
+    let bytes = doc
+        .save_to_bytes()
+        .map_err(|e| BillingError::Internal(anyhow::anyhow!("PDF generation failed: {e}")))?;
 
     Ok(bytes)
 }

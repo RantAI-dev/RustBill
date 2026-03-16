@@ -49,7 +49,7 @@ pub async fn get_overview(pool: &PgPool) -> crate::error::Result<OverviewAnalyti
         FROM subscriptions s
         JOIN pricing_plans pp ON pp.id = s.plan_id
         WHERE s.status = 'active' AND s.deleted_at IS NULL
-        AND pp.billing_cycle = 'monthly'"#
+        AND pp.billing_cycle = 'monthly'"#,
     )
     .fetch_one(pool)
     .await?;
@@ -73,20 +73,19 @@ pub async fn get_overview(pool: &PgPool) -> crate::error::Result<OverviewAnalyti
         .fetch_one(pool)
         .await?;
 
-    let total_revenue: Option<Decimal> = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0) FROM payments"
-    )
-    .fetch_one(pool)
-    .await?;
+    let total_revenue: Option<Decimal> =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount), 0) FROM payments")
+            .fetch_one(pool)
+            .await?;
 
     let outstanding: Option<i64> = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM invoices WHERE status IN ('issued', 'draft') AND deleted_at IS NULL"
+        "SELECT COUNT(*) FROM invoices WHERE status IN ('issued', 'draft') AND deleted_at IS NULL",
     )
     .fetch_one(pool)
     .await?;
 
     let overdue: Option<i64> = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM invoices WHERE status = 'overdue' AND deleted_at IS NULL"
+        "SELECT COUNT(*) FROM invoices WHERE status = 'overdue' AND deleted_at IS NULL",
     )
     .fetch_one(pool)
     .await?;
@@ -96,7 +95,7 @@ pub async fn get_overview(pool: &PgPool) -> crate::error::Result<OverviewAnalyti
         r#"SELECT TO_CHAR(paid_at, 'YYYY-MM') as month, COALESCE(SUM(amount), 0) as revenue
         FROM payments
         WHERE paid_at >= CURRENT_DATE - interval '12 months'
-        GROUP BY month ORDER BY month"#
+        GROUP BY month ORDER BY month"#,
     )
     .fetch_all(pool)
     .await?
@@ -111,12 +110,16 @@ pub async fn get_overview(pool: &PgPool) -> crate::error::Result<OverviewAnalyti
         LEFT JOIN invoices i ON i.customer_id = c.id
         LEFT JOIN payments p ON p.invoice_id = i.id
         GROUP BY c.id, c.name
-        ORDER BY total DESC LIMIT 10"#
+        ORDER BY total DESC LIMIT 10"#,
     )
     .fetch_all(pool)
     .await?
     .into_iter()
-    .map(|(id, name, total_revenue)| TopCustomer { id, name, total_revenue })
+    .map(|(id, name, total_revenue)| TopCustomer {
+        id,
+        name,
+        total_revenue,
+    })
     .collect();
 
     // Revenue by product
@@ -125,12 +128,16 @@ pub async fn get_overview(pool: &PgPool) -> crate::error::Result<OverviewAnalyti
         FROM products p
         LEFT JOIN deals d ON d.product_id = p.id
         GROUP BY p.id, p.name
-        ORDER BY revenue DESC"#
+        ORDER BY revenue DESC"#,
     )
     .fetch_all(pool)
     .await?
     .into_iter()
-    .map(|(product_id, product_name, revenue)| RevenueByProduct { product_id, product_name, revenue })
+    .map(|(product_id, product_name, revenue)| RevenueByProduct {
+        product_id,
+        product_name,
+        revenue,
+    })
     .collect();
 
     Ok(OverviewAnalytics {
@@ -164,7 +171,7 @@ pub async fn get_forecasting(pool: &PgPool) -> crate::error::Result<ForecastAnal
         FROM payments
         WHERE paid_at >= CURRENT_DATE - interval '3 months'
         GROUP BY date_trunc('month', paid_at)
-        ORDER BY date_trunc('month', paid_at)"#
+        ORDER BY date_trunc('month', paid_at)"#,
     )
     .fetch_all(pool)
     .await?;
@@ -198,19 +205,19 @@ pub async fn get_forecasting(pool: &PgPool) -> crate::error::Result<ForecastAnal
 pub async fn get_reports(pool: &PgPool) -> crate::error::Result<serde_json::Value> {
     // Summary report
     let paid_count: Option<i64> = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM invoices WHERE status = 'paid' AND deleted_at IS NULL"
+        "SELECT COUNT(*) FROM invoices WHERE status = 'paid' AND deleted_at IS NULL",
     )
     .fetch_one(pool)
     .await?;
 
     let total_paid: Option<Decimal> = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(total), 0) FROM invoices WHERE status = 'paid' AND deleted_at IS NULL"
+        "SELECT COALESCE(SUM(total), 0) FROM invoices WHERE status = 'paid' AND deleted_at IS NULL",
     )
     .fetch_one(pool)
     .await?;
 
     let total_refunded: Option<Decimal> = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0) FROM refunds WHERE status = 'completed'"
+        "SELECT COALESCE(SUM(amount), 0) FROM refunds WHERE status = 'completed'",
     )
     .fetch_one(pool)
     .await?;

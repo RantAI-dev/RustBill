@@ -32,7 +32,10 @@ async fn checkout_unknown_provider_returns_error(pool: PgPool) {
 
     let body: serde_json::Value = resp.json();
     assert!(
-        body["error"].as_str().unwrap_or("").contains("not configured"),
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("not configured"),
         "expected error message about provider not configured, got: {:?}",
         body
     );

@@ -1,7 +1,13 @@
-use axum::{extract::{Path, State}, http::{StatusCode, header}, response::IntoResponse, routing::{delete, get, post, put}, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, State},
+    http::{header, StatusCode},
+    response::IntoResponse,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -103,17 +109,19 @@ async fn remove(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let result = sqlx::query("UPDATE invoices SET status = 'void', updated_at = now() WHERE id = $1")
-        .bind(&id)
-        .execute(&state.db)
-        .await
-        .map_err(rustbill_core::error::BillingError::from)?;
+    let result =
+        sqlx::query("UPDATE invoices SET status = 'void', updated_at = now() WHERE id = $1")
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     if result.rows_affected() == 0 {
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "invoice".into(),
             id,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -163,17 +171,16 @@ async fn get_pdf(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    let pdf_bytes = rustbill_core::billing::invoice_pdf::generate_invoice_pdf(&state.db, &id)
-        .await?;
+    let pdf_bytes =
+        rustbill_core::billing::invoice_pdf::generate_invoice_pdf(&state.db, &id).await?;
 
     // Fetch invoice number for the filename
-    let invoice_number: Option<String> = sqlx::query_scalar(
-        "SELECT invoice_number FROM invoices WHERE id = $1",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let invoice_number: Option<String> =
+        sqlx::query_scalar("SELECT invoice_number FROM invoices WHERE id = $1")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     let filename = invoice_number
         .map(|n| format!("invoice-{n}.pdf"))

@@ -17,46 +17,49 @@ pub struct AuthUser {
 }
 
 /// Create a new session for a user. Returns the session token (64 hex chars).
-pub async fn create_session(pool: &PgPool, user_id: &str, expiry_days: u32) -> crate::error::Result<String> {
+pub async fn create_session(
+    pool: &PgPool,
+    user_id: &str,
+    expiry_days: u32,
+) -> crate::error::Result<String> {
     let token = generate_token();
     let expires_at = Utc::now().naive_utc() + chrono::Duration::days(expiry_days as i64);
 
-    sqlx::query(
-        "INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)"
-    )
-    .bind(&token)
-    .bind(user_id)
-    .bind(expires_at)
-    .execute(pool)
-    .await?;
+    sqlx::query("INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)")
+        .bind(&token)
+        .bind(user_id)
+        .bind(expires_at)
+        .execute(pool)
+        .await?;
 
     Ok(token)
 }
 
 /// Validate a session token. Returns the authenticated user or None.
-pub async fn validate_session(pool: &PgPool, token: &str) -> crate::error::Result<Option<AuthUser>> {
+pub async fn validate_session(
+    pool: &PgPool,
+    token: &str,
+) -> crate::error::Result<Option<AuthUser>> {
     let row = sqlx::query_as::<_, SessionUserRow>(
         r#"
         SELECT u.id, u.name, u.email, u.role, u.customer_id, s.expires_at
         FROM sessions s
         JOIN users u ON u.id = s.user_id
         WHERE s.id = $1
-        "#
+        "#,
     )
     .bind(token)
     .fetch_optional(pool)
     .await?;
 
     match row {
-        Some(r) if r.expires_at > Utc::now().naive_utc() => {
-            Ok(Some(AuthUser {
-                id: r.id,
-                name: r.name,
-                email: r.email,
-                role: r.role,
-                customer_id: r.customer_id,
-            }))
-        }
+        Some(r) if r.expires_at > Utc::now().naive_utc() => Ok(Some(AuthUser {
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            role: r.role,
+            customer_id: r.customer_id,
+        })),
         Some(_) => {
             // Session expired — clean it up
             let _ = delete_session(pool, token).await;

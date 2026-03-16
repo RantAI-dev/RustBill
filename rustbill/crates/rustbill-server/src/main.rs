@@ -7,9 +7,11 @@ use rustbill_server::app;
 async fn main() -> anyhow::Result<()> {
     // Initialize structured logging
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            "billing_server=info,rustbill_core=info,tower_http=info".into()
-        }))
+        .with(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "billing_server=info,rustbill_core=info,tower_http=info".into()
+            }),
+        )
         .with(tracing_subscriber::fmt::layer().json())
         .init();
 
@@ -39,7 +41,9 @@ async fn main() -> anyhow::Result<()> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c().await.expect("Failed to install Ctrl+C handler");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
     };
 
     #[cfg(unix)]

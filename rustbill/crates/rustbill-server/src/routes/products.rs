@@ -1,8 +1,13 @@
-use axum::{extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}, Json, Router};
+use super::ApiResult;
 use crate::app::SharedState;
 use crate::extractors::{AdminUser, ValidatedJson};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
 use rustbill_core::products::validation::{CreateProductRequest, UpdateProductRequest};
-use super::ApiResult;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -33,7 +38,10 @@ async fn create(
     ValidatedJson(req): ValidatedJson<CreateProductRequest>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let product = rustbill_core::products::create_product(&state.db, req).await?;
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(product).unwrap())))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::to_value(product).unwrap()),
+    ))
 }
 
 async fn update(

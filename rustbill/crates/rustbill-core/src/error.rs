@@ -42,7 +42,10 @@ pub struct FieldError {
 
 impl BillingError {
     pub fn not_found(entity: &'static str, id: impl Into<String>) -> Self {
-        Self::NotFound { entity, id: id.into() }
+        Self::NotFound {
+            entity,
+            id: id.into(),
+        }
     }
 
     pub fn bad_request(msg: impl Into<String>) -> Self {
@@ -60,9 +63,11 @@ impl BillingError {
             .flat_map(|(field, errs)| {
                 errs.iter().map(move |e| FieldError {
                     field: field.to_string(),
-                    message: e.message.as_ref().map(|m| m.to_string()).unwrap_or_else(|| {
-                        format!("invalid value for {field}")
-                    }),
+                    message: e
+                        .message
+                        .as_ref()
+                        .map(|m| m.to_string())
+                        .unwrap_or_else(|| format!("invalid value for {field}")),
                 })
             })
             .collect();

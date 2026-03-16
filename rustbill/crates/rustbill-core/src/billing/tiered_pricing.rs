@@ -64,13 +64,7 @@ mod tests {
 
     #[test]
     fn flat_pricing() {
-        let amount = calculate_amount(
-            &PricingModel::Flat,
-            Decimal::from(100),
-            None,
-            None,
-            5,
-        );
+        let amount = calculate_amount(&PricingModel::Flat, Decimal::from(100), None, None, 5);
         assert_eq!(amount, Decimal::from(100));
     }
 
@@ -104,13 +98,7 @@ mod tests {
         ];
 
         // 10 units at $5 + 5 units at $3 = 50 + 15 = 65
-        let amount = calculate_amount(
-            &PricingModel::Tiered,
-            Decimal::ZERO,
-            None,
-            Some(&tiers),
-            15,
-        );
+        let amount = calculate_amount(&PricingModel::Tiered, Decimal::ZERO, None, Some(&tiers), 15);
         assert_eq!(amount, Decimal::from(65));
     }
 
@@ -132,13 +120,7 @@ mod tests {
         ];
 
         // 10*5 + 10*3 + 5*1 = 50 + 30 + 5 = 85
-        let amount = calculate_amount(
-            &PricingModel::Tiered,
-            Decimal::ZERO,
-            None,
-            Some(&tiers),
-            25,
-        );
+        let amount = calculate_amount(&PricingModel::Tiered, Decimal::ZERO, None, Some(&tiers), 25);
         assert_eq!(amount, Decimal::from(85));
     }
 }

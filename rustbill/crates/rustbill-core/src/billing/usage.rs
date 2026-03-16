@@ -33,10 +33,7 @@ pub struct ListUsageEventsFilter {
 
 // ---- Service functions ----
 
-pub async fn list_usage_events(
-    pool: &PgPool,
-    subscription_id: &str,
-) -> Result<Vec<UsageEvent>> {
+pub async fn list_usage_events(pool: &PgPool, subscription_id: &str) -> Result<Vec<UsageEvent>> {
     let rows = sqlx::query_as::<_, UsageEvent>(
         r#"
         SELECT * FROM usage_events
@@ -51,10 +48,7 @@ pub async fn list_usage_events(
     Ok(rows)
 }
 
-pub async fn create_usage_event(
-    pool: &PgPool,
-    req: CreateUsageEventRequest,
-) -> Result<UsageEvent> {
+pub async fn create_usage_event(pool: &PgPool, req: CreateUsageEventRequest) -> Result<UsageEvent> {
     req.validate().map_err(BillingError::from_validation)?;
 
     // Idempotency check

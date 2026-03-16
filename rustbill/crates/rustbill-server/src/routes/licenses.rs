@@ -1,8 +1,14 @@
-use axum::{extract::{Path, Query, State}, http::StatusCode, response::IntoResponse, routing::{get, post, put}, Json, Router};
-use axum::http::header;
+use super::ApiResult;
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
-use super::ApiResult;
+use axum::http::header;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post, put},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -12,7 +18,10 @@ pub fn router() -> Router<SharedState> {
         .route("/{key}", put(update).delete(remove))
         .route("/{key}/sign", post(sign))
         .route("/{key}/export", get(export))
-        .route("/{key}/activations", get(list_activations).delete(deactivate))
+        .route(
+            "/{key}/activations",
+            get(list_activations).delete(deactivate),
+        )
 }
 
 #[derive(serde::Deserialize)]
@@ -109,7 +118,8 @@ async fn remove(
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "license".into(),
             id: key,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -231,7 +241,8 @@ async fn deactivate(
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "activation".into(),
             id: format!("{}/{}", key, params.device_id),
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))

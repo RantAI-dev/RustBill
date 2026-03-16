@@ -1,19 +1,19 @@
-pub mod plans;
-pub mod subscriptions;
-pub mod invoices;
-pub mod payments;
 pub mod checkout;
-pub mod credit_notes;
 pub mod coupons;
-pub mod refunds;
-pub mod usage;
+pub mod credit_notes;
+pub mod cron;
 pub mod dunning;
 pub mod events;
+pub mod invoices;
+pub mod payments;
+pub mod plans;
+pub mod refunds;
+pub mod subscriptions;
+pub mod usage;
 pub mod webhooks;
-pub mod cron;
 
-use axum::Router;
 use crate::app::SharedState;
+use axum::Router;
 
 pub fn router() -> Router<SharedState> {
     Router::new()

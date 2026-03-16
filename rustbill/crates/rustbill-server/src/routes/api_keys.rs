@@ -1,7 +1,12 @@
-use axum::{extract::{Path, State}, http::StatusCode, routing::{delete, get, post}, Json, Router};
+use super::ApiResult;
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
-use super::ApiResult;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{delete, get, post},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -61,19 +66,19 @@ async fn revoke(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let result = sqlx::query(
-        "UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL",
-    )
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let result =
+        sqlx::query("UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL")
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     if result.rows_affected() == 0 {
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "api_key".into(),
             id,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))

@@ -36,13 +36,11 @@ pub async fn create_checkout(
     }
 
     // Fetch customer for provider-specific customer IDs
-    let customer = sqlx::query_as::<_, Customer>(
-        "SELECT * FROM customers WHERE id = $1",
-    )
-    .bind(&invoice.customer_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| BillingError::not_found("customer", &invoice.customer_id))?;
+    let customer = sqlx::query_as::<_, Customer>("SELECT * FROM customers WHERE id = $1")
+        .bind(&invoice.customer_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| BillingError::not_found("customer", &invoice.customer_id))?;
 
     let success_url = format!("{origin}/checkout/success?invoice_id={invoice_id}");
     let cancel_url = format!("{origin}/checkout/cancel?invoice_id={invoice_id}");
@@ -52,10 +50,20 @@ pub async fn create_checkout(
             create_stripe_checkout(pool, &invoice, &customer, &success_url, &cancel_url).await
         }
         "xendit" => {
-            create_xendit_checkout(pool, http, settings, &invoice, &customer, &success_url, &cancel_url).await
+            create_xendit_checkout(
+                pool,
+                http,
+                settings,
+                &invoice,
+                &customer,
+                &success_url,
+                &cancel_url,
+            )
+            .await
         }
         "lemonsqueezy" => {
-            create_lemonsqueezy_checkout(pool, http, settings, &invoice, &customer, &success_url).await
+            create_lemonsqueezy_checkout(pool, http, settings, &invoice, &customer, &success_url)
+                .await
         }
         _ => Err(BillingError::ProviderNotConfigured(provider.to_string())),
     }
@@ -72,14 +80,9 @@ async fn create_stripe_checkout(
 ) -> Result<CheckoutResult> {
     // Stripe checkout still uses placeholder URL -- Stripe SDK integration is out of scope
     // for the reqwest-based approach (Stripe requires form-encoded requests with their SDK).
-    let _stripe_customer_id = customer
-        .stripe_customer_id
-        .as_ref()
-        .ok_or_else(|| {
-            BillingError::bad_request(
-                "customer does not have a Stripe customer ID configured",
-            )
-        })?;
+    let _stripe_customer_id = customer.stripe_customer_id.as_ref().ok_or_else(|| {
+        BillingError::bad_request("customer does not have a Stripe customer ID configured")
+    })?;
 
     let checkout_url = format!(
         "https://checkout.stripe.com/pay/placeholder?invoice={}&amount={}&currency={}&success_url={}&cancel_url={}",
@@ -105,14 +108,9 @@ async fn create_xendit_checkout(
     success_url: &str,
     cancel_url: &str,
 ) -> Result<CheckoutResult> {
-    let _xendit_customer_id = customer
-        .xendit_customer_id
-        .as_ref()
-        .ok_or_else(|| {
-            BillingError::bad_request(
-                "customer does not have a Xendit customer ID configured",
-            )
-        })?;
+    let _xendit_customer_id = customer.xendit_customer_id.as_ref().ok_or_else(|| {
+        BillingError::bad_request("customer does not have a Xendit customer ID configured")
+    })?;
 
     let params = xendit::XenditInvoiceParams {
         invoice_id: invoice.id.clone(),
@@ -128,13 +126,11 @@ async fn create_xendit_checkout(
     let result = xendit::create_invoice(http, settings, params).await?;
 
     // Store the Xendit invoice ID on the invoice record
-    sqlx::query(
-        "UPDATE invoices SET xendit_invoice_id = $2, updated_at = NOW() WHERE id = $1",
-    )
-    .bind(&invoice.id)
-    .bind(&result.xendit_invoice_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE invoices SET xendit_invoice_id = $2, updated_at = NOW() WHERE id = $1")
+        .bind(&invoice.id)
+        .bind(&result.xendit_invoice_id)
+        .execute(pool)
+        .await?;
 
     Ok(CheckoutResult {
         checkout_url: result.invoice_url,
@@ -163,13 +159,11 @@ async fn create_lemonsqueezy_checkout(
     let result = lemonsqueezy::create_checkout(http, settings, params).await?;
 
     // Store the LemonSqueezy checkout/order ID on the invoice record
-    sqlx::query(
-        "UPDATE invoices SET lemonsqueezy_order_id = $2, updated_at = NOW() WHERE id = $1",
-    )
-    .bind(&invoice.id)
-    .bind(&result.checkout_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE invoices SET lemonsqueezy_order_id = $2, updated_at = NOW() WHERE id = $1")
+        .bind(&invoice.id)
+        .bind(&result.checkout_id)
+        .execute(pool)
+        .await?;
 
     Ok(CheckoutResult {
         checkout_url: result.checkout_url,

@@ -1,6 +1,6 @@
+use crate::customers::validation::{CreateCustomerRequest, UpdateCustomerRequest};
 use crate::db::models::{Customer, Trend};
 use crate::error::{BillingError, Result};
-use crate::customers::validation::{CreateCustomerRequest, UpdateCustomerRequest};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 
@@ -12,20 +12,18 @@ pub async fn list_customers(pool: &PgPool) -> Result<Vec<serde_json::Value>> {
     let mut results = Vec::with_capacity(rows.len());
     for c in rows {
         // Compute total revenue from deals
-        let total_revenue: Option<Decimal> = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(value), 0) FROM deals WHERE customer_id = $1",
-        )
-        .bind(&c.id)
-        .fetch_one(pool)
-        .await?;
+        let total_revenue: Option<Decimal> =
+            sqlx::query_scalar("SELECT COALESCE(SUM(value), 0) FROM deals WHERE customer_id = $1")
+                .bind(&c.id)
+                .fetch_one(pool)
+                .await?;
 
         // Compute last contact from most recent deal date
-        let last_contact: Option<String> = sqlx::query_scalar(
-            "SELECT MAX(date) FROM deals WHERE customer_id = $1",
-        )
-        .bind(&c.id)
-        .fetch_one(pool)
-        .await?;
+        let last_contact: Option<String> =
+            sqlx::query_scalar("SELECT MAX(date) FROM deals WHERE customer_id = $1")
+                .bind(&c.id)
+                .fetch_one(pool)
+                .await?;
 
         // Compute health score:
         // - base 50

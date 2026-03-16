@@ -18,10 +18,12 @@ pub async fn create_checkout(
     settings: &ProviderSettings,
     params: LsCheckoutParams,
 ) -> Result<LsCheckoutResult> {
-    let api_key = settings.get("lemonsqueezy_api_key")
-        .ok_or_else(|| crate::error::BillingError::ProviderNotConfigured("lemonsqueezy".to_string()))?;
-    let store_id = settings.get("lemonsqueezy_store_id")
-        .ok_or_else(|| crate::error::BillingError::ProviderNotConfigured("lemonsqueezy".to_string()))?;
+    let api_key = settings.get("lemonsqueezy_api_key").ok_or_else(|| {
+        crate::error::BillingError::ProviderNotConfigured("lemonsqueezy".to_string())
+    })?;
+    let store_id = settings.get("lemonsqueezy_store_id").ok_or_else(|| {
+        crate::error::BillingError::ProviderNotConfigured("lemonsqueezy".to_string())
+    })?;
 
     let amount_cents = (params.total * Decimal::from(100))
         .to_string()
@@ -69,19 +71,21 @@ pub async fn create_checkout(
         return Err(anyhow::anyhow!("lemonsqueezy checkout failed: {text}").into());
     }
 
-    let json: serde_json::Value = resp.json().await
+    let json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| anyhow::anyhow!("lemonsqueezy response parse failed: {e}"))?;
 
     let checkout_url = json["data"]["attributes"]["url"]
         .as_str()
         .unwrap_or_default()
         .to_string();
-    let checkout_id = json["data"]["id"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string();
+    let checkout_id = json["data"]["id"].as_str().unwrap_or_default().to_string();
 
-    Ok(LsCheckoutResult { checkout_url, checkout_id })
+    Ok(LsCheckoutResult {
+        checkout_url,
+        checkout_id,
+    })
 }
 
 /// Verify LemonSqueezy webhook signature (HMAC-SHA256, constant-time).

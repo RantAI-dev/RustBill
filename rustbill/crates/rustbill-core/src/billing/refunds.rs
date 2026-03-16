@@ -62,13 +62,11 @@ pub async fn create_refund(pool: &PgPool, req: CreateRefundRequest) -> Result<Re
     let mut tx = pool.begin().await?;
 
     // Validate payment exists
-    let payment = sqlx::query_as::<_, Payment>(
-        "SELECT * FROM payments WHERE id = $1",
-    )
-    .bind(&req.payment_id)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(|| BillingError::not_found("payment", &req.payment_id))?;
+    let payment = sqlx::query_as::<_, Payment>("SELECT * FROM payments WHERE id = $1")
+        .bind(&req.payment_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| BillingError::not_found("payment", &req.payment_id))?;
 
     // Check that total refunds for this payment don't exceed payment amount
     let existing_refunds: Option<Decimal> = sqlx::query_scalar(
@@ -127,23 +125,21 @@ async fn recalculate_invoice_status(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     invoice_id: &str,
 ) -> Result<()> {
-    let invoice = sqlx::query_as::<_, Invoice>(
-        "SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(invoice_id)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let invoice =
+        sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+            .bind(invoice_id)
+            .fetch_optional(&mut **tx)
+            .await?;
 
     let Some(invoice) = invoice else {
         return Ok(());
     };
 
-    let total_paid: Option<Decimal> = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = $1",
-    )
-    .bind(invoice_id)
-    .fetch_one(&mut **tx)
-    .await?;
+    let total_paid: Option<Decimal> =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = $1")
+            .bind(invoice_id)
+            .fetch_one(&mut **tx)
+            .await?;
 
     let total_refunded: Option<Decimal> = sqlx::query_scalar(
         "SELECT COALESCE(SUM(amount), 0) FROM refunds WHERE invoice_id = $1 AND status = 'completed' AND deleted_at IS NULL",

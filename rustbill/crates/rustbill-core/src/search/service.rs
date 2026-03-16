@@ -22,12 +22,11 @@ pub async fn global_search(pool: &PgPool, query: &str) -> crate::error::Result<V
     let mut results = Vec::new();
 
     // Products
-    let products: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, name FROM products WHERE name ILIKE $1 LIMIT 5"
-    )
-    .bind(&pattern)
-    .fetch_all(pool)
-    .await?;
+    let products: Vec<(String, String)> =
+        sqlx::query_as("SELECT id, name FROM products WHERE name ILIKE $1 LIMIT 5")
+            .bind(&pattern)
+            .fetch_all(pool)
+            .await?;
 
     for (id, name) in products {
         results.push(SearchResult {
@@ -40,7 +39,7 @@ pub async fn global_search(pool: &PgPool, query: &str) -> crate::error::Result<V
 
     // Customers
     let customers: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT id, name, email FROM customers WHERE name ILIKE $1 OR email ILIKE $1 LIMIT 5"
+        "SELECT id, name, email FROM customers WHERE name ILIKE $1 OR email ILIKE $1 LIMIT 5",
     )
     .bind(&pattern)
     .fetch_all(pool)

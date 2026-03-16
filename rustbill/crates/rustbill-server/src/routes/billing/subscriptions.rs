@@ -1,7 +1,12 @@
-use axum::{extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::{AdminUser, SessionUser};
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
 use rustbill_core::db::models::UserRole;
 
 pub fn router() -> Router<SharedState> {
@@ -109,17 +114,20 @@ async fn remove(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let result = sqlx::query("UPDATE subscriptions SET status = 'cancelled', updated_at = now() WHERE id = $1")
-        .bind(&id)
-        .execute(&state.db)
-        .await
-        .map_err(rustbill_core::error::BillingError::from)?;
+    let result = sqlx::query(
+        "UPDATE subscriptions SET status = 'cancelled', updated_at = now() WHERE id = $1",
+    )
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
 
     if result.rows_affected() == 0 {
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "subscription".into(),
             id,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -140,9 +148,10 @@ async fn lifecycle(
         "cancel" => "cancelled",
         "renew" => "active",
         _ => {
-            return Err(rustbill_core::error::BillingError::BadRequest(
-                format!("Unknown lifecycle action: {action}"),
-            ).into());
+            return Err(rustbill_core::error::BillingError::BadRequest(format!(
+                "Unknown lifecycle action: {action}"
+            ))
+            .into());
         }
     };
 

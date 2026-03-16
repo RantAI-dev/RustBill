@@ -1,9 +1,9 @@
+pub mod lemonsqueezy;
 pub mod stripe;
 pub mod xendit;
-pub mod lemonsqueezy;
 
-use axum::Router;
 use crate::app::SharedState;
+use axum::Router;
 
 pub fn router() -> Router<SharedState> {
     Router::new()

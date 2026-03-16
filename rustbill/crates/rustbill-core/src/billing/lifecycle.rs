@@ -168,12 +168,10 @@ async fn renew_single_subscription(
     email_sender: Option<&EmailSender>,
     http_client: &reqwest::Client,
 ) -> Result<()> {
-    let plan = sqlx::query_as::<_, PricingPlan>(
-        "SELECT * FROM pricing_plans WHERE id = $1",
-    )
-    .bind(&sub.plan_id)
-    .fetch_one(pool)
-    .await?;
+    let plan = sqlx::query_as::<_, PricingPlan>("SELECT * FROM pricing_plans WHERE id = $1")
+        .bind(&sub.plan_id)
+        .fetch_one(pool)
+        .await?;
 
     let mut tx = pool.begin().await?;
 
@@ -193,11 +191,10 @@ async fn renew_single_subscription(
     );
 
     // Generate invoice number
-    let invoice_number: String = sqlx::query_scalar(
-        "SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
+    let invoice_number: String =
+        sqlx::query_scalar("SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')")
+            .fetch_one(&mut *tx)
+            .await?;
 
     let new_period_end = advance_period(sub.current_period_end, &plan.billing_cycle);
     let due_at = now + chrono::Duration::days(30);
@@ -231,7 +228,11 @@ async fn renew_single_subscription(
         "#,
     )
     .bind(&invoice.id)
-    .bind(format!("{} ({})", plan.name, format_cycle(&plan.billing_cycle)))
+    .bind(format!(
+        "{} ({})",
+        plan.name,
+        format_cycle(&plan.billing_cycle)
+    ))
     .bind(Decimal::from(quantity))
     .bind(plan.base_price)
     .bind(amount)
@@ -376,17 +377,10 @@ async fn renew_single_subscription(
 
 /// For usage-based plans, compute quantity from usage_events for the period.
 /// For other plans, return the subscription quantity.
-async fn compute_quantity(
-    pool: &PgPool,
-    sub: &Subscription,
-    plan: &PricingPlan,
-) -> Result<i32> {
+async fn compute_quantity(pool: &PgPool, sub: &Subscription, plan: &PricingPlan) -> Result<i32> {
     if plan.pricing_model == PricingModel::UsageBased {
         // Sum usage events for the current billing period
-        let metric_name = plan
-            .usage_metric_name
-            .as_deref()
-            .unwrap_or("api_calls");
+        let metric_name = plan.usage_metric_name.as_deref().unwrap_or("api_calls");
 
         let total_usage: Option<Decimal> = sqlx::query_scalar(
             r#"

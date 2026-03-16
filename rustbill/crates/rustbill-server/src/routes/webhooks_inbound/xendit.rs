@@ -1,12 +1,16 @@
-use axum::{extract::State, http::{HeaderMap, StatusCode}, routing::post, Router};
 use crate::app::SharedState;
 use crate::routes::ApiResult;
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    routing::post,
+    Router,
+};
 use rust_decimal::Decimal;
 use subtle::ConstantTimeEq;
 
 pub fn router() -> Router<SharedState> {
-    Router::new()
-        .route("/", post(handle_webhook))
+    Router::new().route("/", post(handle_webhook))
 }
 
 async fn handle_webhook(
@@ -19,7 +23,10 @@ async fn handle_webhook(
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
 
-    tracing::info!(has_token = !callback_token.is_empty(), "Received Xendit webhook");
+    tracing::info!(
+        has_token = !callback_token.is_empty(),
+        "Received Xendit webhook"
+    );
 
     // Verify callback token against stored Xendit webhook verification token
     let expected_token = state.provider_cache.get("xendit_webhook_token").await;
@@ -34,10 +41,9 @@ async fn handle_webhook(
         }
     }
 
-    let event: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| rustbill_core::error::BillingError::BadRequest(
-            format!("Invalid JSON: {e}"),
-        ))?;
+    let event: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        rustbill_core::error::BillingError::BadRequest(format!("Invalid JSON: {e}"))
+    })?;
 
     let event_type = event["event"].as_str().unwrap_or("unknown");
     tracing::info!(event_type, "Processing Xendit event");
@@ -57,7 +63,8 @@ async fn handle_webhook(
     // Dispatch based on Xendit invoice status
     // Xendit sends invoice callback with a "status" field at the top level
     let status = event["status"].as_str().unwrap_or_default();
-    let external_id = event["external_id"].as_str()
+    let external_id = event["external_id"]
+        .as_str()
         .or(event["data"]["external_id"].as_str());
 
     match status {
@@ -111,12 +118,22 @@ async fn handle_webhook(
                             lemonsqueezy_order_id: None,
                         };
 
-                        if let Err(e) = rustbill_core::billing::payments::create_payment_with_notification(&state.db, req, state.email_sender.as_ref()).await {
+                        if let Err(e) =
+                            rustbill_core::billing::payments::create_payment_with_notification(
+                                &state.db,
+                                req,
+                                state.email_sender.as_ref(),
+                            )
+                            .await
+                        {
                             tracing::warn!("Failed to create payment record for Xendit event: {e}");
                         }
                     }
                 } else {
-                    tracing::warn!(external_id = ext_id, "No matching invoice found for Xendit PAID event");
+                    tracing::warn!(
+                        external_id = ext_id,
+                        "No matching invoice found for Xendit PAID event"
+                    );
                 }
             }
         }

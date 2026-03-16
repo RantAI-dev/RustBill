@@ -1,7 +1,12 @@
-use axum::{extract::{Path, Query, State}, http::StatusCode, routing::{get, post}, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::{AdminUser, SessionUser};
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use rustbill_core::db::models::UserRole;
 
 pub fn router() -> Router<SharedState> {

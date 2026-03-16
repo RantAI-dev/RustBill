@@ -1,7 +1,12 @@
-use axum::{extract::{Path, Query, State}, http::StatusCode, routing::{delete, get, post, put}, Json, Router};
+use super::ApiResult;
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
-use super::ApiResult;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -126,7 +131,8 @@ async fn remove(
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "deal".into(),
             id,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))

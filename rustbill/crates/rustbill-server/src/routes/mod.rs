@@ -1,15 +1,15 @@
+pub mod analytics;
+pub mod api_keys;
 pub mod auth;
-pub mod products;
+pub mod billing;
 pub mod customers;
 pub mod deals;
 pub mod licenses;
-pub mod api_keys;
-pub mod billing;
-pub mod webhooks_inbound;
-pub mod v1;
-pub mod analytics;
+pub mod products;
 pub mod search;
 pub mod settings;
+pub mod v1;
+pub mod webhooks_inbound;
 
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use rustbill_core::error::BillingError;
@@ -34,10 +34,9 @@ impl IntoResponse for ApiError {
                 StatusCode::FORBIDDEN,
                 serde_json::json!({ "error": "Forbidden" }),
             ),
-            BillingError::Conflict(ref msg) => (
-                StatusCode::CONFLICT,
-                serde_json::json!({ "error": msg }),
-            ),
+            BillingError::Conflict(ref msg) => {
+                (StatusCode::CONFLICT, serde_json::json!({ "error": msg }))
+            }
             BillingError::ProviderNotConfigured(ref p) => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 serde_json::json!({ "error": format!("{p} is not configured") }),
@@ -46,10 +45,9 @@ impl IntoResponse for ApiError {
                 StatusCode::TOO_MANY_REQUESTS,
                 serde_json::json!({ "error": "rate_limited", "retryAfter": retry_after }),
             ),
-            BillingError::BadRequest(ref msg) => (
-                StatusCode::BAD_REQUEST,
-                serde_json::json!({ "error": msg }),
-            ),
+            BillingError::BadRequest(ref msg) => {
+                (StatusCode::BAD_REQUEST, serde_json::json!({ "error": msg }))
+            }
             BillingError::Database(ref e) => {
                 tracing::error!("Database error: {e:?}");
                 (

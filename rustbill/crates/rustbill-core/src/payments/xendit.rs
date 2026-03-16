@@ -31,7 +31,8 @@ pub async fn create_invoice(
     settings: &ProviderSettings,
     params: XenditInvoiceParams,
 ) -> Result<XenditInvoiceResult> {
-    let secret_key = settings.get("xendit_secret_key")
+    let secret_key = settings
+        .get("xendit_secret_key")
         .ok_or_else(|| crate::error::BillingError::ProviderNotConfigured("xendit".to_string()))?;
 
     let body = CreateInvoiceRequest {
@@ -57,7 +58,9 @@ pub async fn create_invoice(
         return Err(anyhow::anyhow!("xendit invoice creation failed: {text}").into());
     }
 
-    let result: CreateInvoiceResponse = resp.json().await
+    let result: CreateInvoiceResponse = resp
+        .json()
+        .await
         .map_err(|e| anyhow::anyhow!("xendit response parse failed: {e}"))?;
 
     Ok(XenditInvoiceResult {
@@ -75,7 +78,8 @@ pub async fn create_refund(
     currency: &str,
     reason: Option<&str>,
 ) -> Result<String> {
-    let secret_key = settings.get("xendit_secret_key")
+    let secret_key = settings
+        .get("xendit_secret_key")
         .ok_or_else(|| crate::error::BillingError::ProviderNotConfigured("xendit".to_string()))?;
 
     let body = serde_json::json!({
@@ -98,7 +102,9 @@ pub async fn create_refund(
         return Err(anyhow::anyhow!("xendit refund failed: {text}").into());
     }
 
-    let result: serde_json::Value = resp.json().await
+    let result: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| anyhow::anyhow!("xendit refund response parse failed: {e}"))?;
 
     Ok(result["id"].as_str().unwrap_or_default().to_string())

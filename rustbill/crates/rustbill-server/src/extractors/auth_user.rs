@@ -28,7 +28,8 @@ where
                 (
                     StatusCode::UNAUTHORIZED,
                     Json(serde_json::json!({ "error": "Unauthorized" })),
-                ).into_response()
+                )
+                    .into_response()
             })
     }
 }

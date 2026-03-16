@@ -1,7 +1,7 @@
 //! Password hashing with argon2 (new) + bcrypt verification (existing compat).
 
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use rand::rngs::OsRng;
 
 /// Hash a password using argon2id (OWASP recommended).
@@ -20,8 +20,8 @@ pub fn verify_password(password: &str, hash: &str) -> crate::error::Result<bool>
     // Detect hash type by prefix
     if hash.starts_with("$argon2") {
         // Argon2 hash
-        let parsed = PasswordHash::new(hash)
-            .map_err(|e| anyhow::anyhow!("invalid argon2 hash: {e}"))?;
+        let parsed =
+            PasswordHash::new(hash).map_err(|e| anyhow::anyhow!("invalid argon2 hash: {e}"))?;
         Ok(Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .is_ok())

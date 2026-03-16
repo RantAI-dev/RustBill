@@ -1,7 +1,12 @@
-use axum::{extract::{Path, Query, State}, http::StatusCode, routing::{delete, get, post, put}, Json, Router};
+use super::ApiResult;
 use crate::app::SharedState;
 use crate::extractors::{AdminUser, ValidatedJson};
-use super::ApiResult;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -14,7 +19,7 @@ async fn list(
     _user: AdminUser,
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_as::<_, (serde_json::Value,)>(
-        "SELECT to_jsonb(c) FROM customers c ORDER BY c.created_at DESC"
+        "SELECT to_jsonb(c) FROM customers c ORDER BY c.created_at DESC",
     )
     .fetch_all(&state.db)
     .await
@@ -29,7 +34,7 @@ async fn get_one(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(c) FROM customers c WHERE c.id = $1"
+        "SELECT to_jsonb(c) FROM customers c WHERE c.id = $1",
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -50,7 +55,10 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let name = body["name"].as_str().unwrap_or_default();
     let email = body["email"].as_str().unwrap_or_default();
-    let metadata = body.get("metadata").cloned().unwrap_or(serde_json::json!({}));
+    let metadata = body
+        .get("metadata")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
 
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO customers (id, name, email, metadata, created_at, updated_at)
@@ -116,7 +124,8 @@ async fn remove(
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "customer".into(),
             id,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))

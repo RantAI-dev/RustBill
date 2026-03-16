@@ -36,7 +36,7 @@ pub async fn emit_billing_event(
 
     // Find matching webhook endpoints
     let endpoints: Vec<WebhookRow> = sqlx::query_as(
-        "SELECT id, url, secret, events FROM webhook_endpoints WHERE status = 'active'"
+        "SELECT id, url, secret, events FROM webhook_endpoints WHERE status = 'active'",
     )
     .fetch_all(pool)
     .await?;
@@ -48,10 +48,13 @@ pub async fn emit_billing_event(
 
     for ep in endpoints {
         // Check if endpoint subscribes to this event
-        let subscribed = ep.events.as_array()
-            .map(|arr| arr.iter().any(|e| {
-                e.as_str() == Some(&event_type_str) || e.as_str() == Some("*")
-            }))
+        let subscribed = ep
+            .events
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .any(|e| e.as_str() == Some(&event_type_str) || e.as_str() == Some("*"))
+            })
             .unwrap_or(false);
 
         if !subscribed {
@@ -143,7 +146,9 @@ async fn dispatch_webhook(
                 }
 
                 // Success or non-retryable client error (4xx except 429)
-                if (200..300).contains(&(status as u16)) || ((400..500).contains(&(status as u16)) && status != 429) {
+                if (200..300).contains(&(status as u16))
+                    || ((400..500).contains(&(status as u16)) && status != 429)
+                {
                     return;
                 }
             }

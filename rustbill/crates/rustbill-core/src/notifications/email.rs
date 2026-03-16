@@ -44,7 +44,8 @@ impl EmailSender {
             html,
         };
 
-        match self.http
+        match self
+            .http
             .post("https://api.resend.com/emails")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)

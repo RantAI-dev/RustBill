@@ -1,4 +1,4 @@
 pub mod app;
-pub mod routes;
-pub mod middleware;
 pub mod extractors;
+pub mod middleware;
+pub mod routes;

@@ -34,7 +34,9 @@ async fn create_api_key_returns_plaintext(pool: PgPool) {
     let body: serde_json::Value = resp.json();
     assert_eq!(body["name"].as_str().unwrap(), "CI/CD Key");
     // The plaintext key should be returned on creation
-    let key = body["key"].as_str().expect("plaintext key should be present");
+    let key = body["key"]
+        .as_str()
+        .expect("plaintext key should be present");
     assert!(!key.is_empty());
     // The hashed key should NOT be in the response
     assert!(body.get("hashed_key").is_none() || body["hashed_key"].is_null());

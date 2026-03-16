@@ -1,7 +1,12 @@
-use axum::{extract::{Path, State}, http::StatusCode, routing::{delete, get, post, put}, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{delete, get, post, put},
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -109,7 +114,8 @@ async fn remove(
         return Err(rustbill_core::error::BillingError::NotFound {
             entity: "webhook_endpoint".into(),
             id,
-        }.into());
+        }
+        .into());
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -140,11 +146,7 @@ async fn test_webhook(
         "data": { "message": "This is a test webhook delivery" },
     });
 
-    let resp = state.http_client
-        .post(url)
-        .json(&test_payload)
-        .send()
-        .await;
+    let resp = state.http_client.post(url).json(&test_payload).send().await;
 
     match resp {
         Ok(r) => Ok(Json(serde_json::json!({

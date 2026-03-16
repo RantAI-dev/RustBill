@@ -19,22 +19,20 @@ where
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let user = parts
-            .extensions
-            .get::<AuthUser>()
-            .cloned()
-            .ok_or_else(|| {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    Json(serde_json::json!({ "error": "Unauthorized" })),
-                ).into_response()
-            })?;
+        let user = parts.extensions.get::<AuthUser>().cloned().ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "Unauthorized" })),
+            )
+                .into_response()
+        })?;
 
         if user.role != UserRole::Admin {
             return Err((
                 StatusCode::FORBIDDEN,
                 Json(serde_json::json!({ "error": "Forbidden" })),
-            ).into_response());
+            )
+                .into_response());
         }
 
         Ok(AdminUser(user))

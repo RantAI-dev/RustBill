@@ -104,13 +104,11 @@ pub async fn list_coupons(pool: &PgPool) -> Result<Vec<CouponView>> {
 }
 
 pub async fn get_coupon(pool: &PgPool, id: &str) -> Result<Coupon> {
-    sqlx::query_as::<_, Coupon>(
-        "SELECT * FROM coupons WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| BillingError::not_found("coupon", id))
+    sqlx::query_as::<_, Coupon>("SELECT * FROM coupons WHERE id = $1 AND deleted_at IS NULL")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| BillingError::not_found("coupon", id))
 }
 
 pub async fn create_coupon(pool: &PgPool, req: CreateCouponRequest) -> Result<Coupon> {
@@ -119,12 +117,11 @@ pub async fn create_coupon(pool: &PgPool, req: CreateCouponRequest) -> Result<Co
     let currency = req.currency.clone().unwrap_or_else(|| "USD".to_string());
 
     // Check for duplicate code
-    let existing: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM coupons WHERE code = $1 AND deleted_at IS NULL",
-    )
-    .bind(&req.code)
-    .fetch_optional(pool)
-    .await?;
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM coupons WHERE code = $1 AND deleted_at IS NULL")
+            .bind(&req.code)
+            .fetch_optional(pool)
+            .await?;
 
     if existing.is_some() {
         return Err(BillingError::conflict(format!(

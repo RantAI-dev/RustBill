@@ -1,7 +1,11 @@
-use axum::{extract::{Query, State}, routing::get, Json, Router};
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Query, State},
+    routing::get,
+    Json, Router,
+};
 use rust_decimal::Decimal;
 
 pub fn router() -> Router<SharedState> {
@@ -20,12 +24,11 @@ async fn overview(
         .await
         .map_err(rustbill_core::error::BillingError::from)?;
 
-    let active_subscriptions: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM subscriptions WHERE status = 'active'",
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let active_subscriptions: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM subscriptions WHERE status = 'active'")
+            .fetch_one(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     let mrr: (Option<i64>,) = sqlx::query_as(
         r#"SELECT SUM(bp.amount) FROM subscriptions s
@@ -36,19 +39,17 @@ async fn overview(
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
 
-    let total_revenue: (Option<i64>,) = sqlx::query_as(
-        "SELECT SUM(amount) FROM payments WHERE status = 'succeeded'",
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let total_revenue: (Option<i64>,) =
+        sqlx::query_as("SELECT SUM(amount) FROM payments WHERE status = 'succeeded'")
+            .fetch_one(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
-    let active_licenses: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM licenses WHERE status = 'active'",
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let active_licenses: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM licenses WHERE status = 'active'")
+            .fetch_one(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     Ok(Json(serde_json::json!({
         "totalCustomers": total_customers.0,
@@ -65,7 +66,9 @@ struct ForecastParams {
     months: Option<i32>,
 }
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 async fn forecasting(
     State(state): State<SharedState>,
@@ -99,12 +102,10 @@ async fn forecasting(
     }
 
     // Monthly target from products
-    let annual_target: (Option<Decimal>,) = sqlx::query_as(
-        "SELECT SUM(target) FROM products",
-    )
-    .fetch_one(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let annual_target: (Option<Decimal>,) = sqlx::query_as("SELECT SUM(target) FROM products")
+        .fetch_one(&state.db)
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?;
     let annual_target_val = decimal_to_i64(annual_target.0.unwrap_or_default());
     let monthly_target = annual_target_val / 12;
 
@@ -134,7 +135,9 @@ async fn forecasting(
     let mut forecast_data = Vec::new();
     for (idx, month_name) in MONTHS.iter().enumerate() {
         let month_idx = idx as i32 + 1;
-        let actual = actuals_map.get(&format!("{}-{}", current_year, month_idx)).copied();
+        let actual = actuals_map
+            .get(&format!("{}-{}", current_year, month_idx))
+            .copied();
         let is_past = idx as i32 <= current_month;
 
         // Forecast: growing projection from average
@@ -163,7 +166,8 @@ async fn forecasting(
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
 
-    let mut quarters: std::collections::HashMap<String, (i64, i64, i64)> = std::collections::HashMap::new();
+    let mut quarters: std::collections::HashMap<String, (i64, i64, i64)> =
+        std::collections::HashMap::new();
     for q in 1..=4 {
         quarters.insert(format!("Q{}", q), (0, 0, 0)); // committed, bestCase, projected
     }
@@ -182,7 +186,8 @@ async fn forecasting(
     let quarterly_forecast: Vec<serde_json::Value> = (1..=4)
         .map(|q| {
             let q_key = format!("Q{}", q);
-            let (committed, best_case, projected) = quarters.get(&q_key).copied().unwrap_or((0, 0, 0));
+            let (committed, best_case, projected) =
+                quarters.get(&q_key).copied().unwrap_or((0, 0, 0));
             serde_json::json!({
                 "quarter": q_key,
                 "committed": committed,
@@ -207,7 +212,10 @@ async fn forecasting(
     .map_err(rustbill_core::error::BillingError::from)?;
 
     if !overdue_invoices.is_empty() {
-        let total_overdue: i64 = overdue_invoices.iter().map(|(_, _, t, _)| decimal_to_i64(*t)).sum();
+        let total_overdue: i64 = overdue_invoices
+            .iter()
+            .map(|(_, _, t, _)| decimal_to_i64(*t))
+            .sum();
         let deals_list: Vec<String> = overdue_invoices
             .iter()
             .map(|(_, inv_num, _, name)| {
@@ -303,7 +311,8 @@ async fn forecasting(
     // 6. KPIs
     let current_quarter_idx = current_month / 3;
     let current_q_key = format!("Q{}", current_quarter_idx + 1);
-    let (committed, _best_case, projected) = quarters.get(&current_q_key).copied().unwrap_or((0, 0, 0));
+    let (committed, _best_case, projected) =
+        quarters.get(&current_q_key).copied().unwrap_or((0, 0, 0));
     let _ = committed; // suppress unused warning
     let quarter_target = annual_target_val / 4;
 
@@ -318,7 +327,8 @@ async fn forecasting(
                 let key = format!("{}-{}", current_year, i + 1);
                 if let Some(&actual) = actuals_map.get(&key) {
                     if actual > 0 {
-                        let forecast_val = forecast_data.get(i)
+                        let forecast_val = forecast_data
+                            .get(i)
                             .and_then(|d| d["forecast"].as_i64())
                             .unwrap_or(0);
                         let error = (forecast_val - actual).unsigned_abs() as f64 / actual as f64;
@@ -343,12 +353,15 @@ async fn forecasting(
     };
 
     // At-risk revenue: sum of impact values from risk factors
-    let at_risk_revenue: i64 = risk_factors.iter().map(|r| {
-        let impact_str = r["impact"].as_str().unwrap_or("$0");
-        // Extract digits from the impact string
-        let digits: String = impact_str.chars().filter(|c| c.is_ascii_digit()).collect();
-        digits.parse::<i64>().unwrap_or(0)
-    }).sum();
+    let at_risk_revenue: i64 = risk_factors
+        .iter()
+        .map(|r| {
+            let impact_str = r["impact"].as_str().unwrap_or("$0");
+            // Extract digits from the impact string
+            let digits: String = impact_str.chars().filter(|c| c.is_ascii_digit()).collect();
+            digits.parse::<i64>().unwrap_or(0)
+        })
+        .sum();
 
     Ok(Json(serde_json::json!({
         "forecastData": forecast_data,
@@ -460,10 +473,12 @@ async fn reports(
 
     // 3. YoY change
     let yoy_change = if conversion_data.len() >= 2 {
-        let first_rate = conversion_data.first()
+        let first_rate = conversion_data
+            .first()
             .and_then(|v| v["rate"].as_i64())
             .unwrap_or(0);
-        let last_rate = conversion_data.last()
+        let last_rate = conversion_data
+            .last()
             .and_then(|v| v["rate"].as_i64())
             .unwrap_or(0);
         format!("+{}%", (last_rate - first_rate).unsigned_abs())
@@ -472,33 +487,45 @@ async fn reports(
     };
 
     // 4. Recent reports — last 10 invoices as report entries
-    let recent_invoices: Vec<(String, String, String, Decimal, NaiveDateTime, Option<String>)> =
-        sqlx::query_as(
-            r#"SELECT i.id, i.invoice_number, i.status::text, i.total, i.created_at, c.name
+    let recent_invoices: Vec<(
+        String,
+        String,
+        String,
+        Decimal,
+        NaiveDateTime,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"SELECT i.id, i.invoice_number, i.status::text, i.total, i.created_at, c.name
                FROM invoices i
                LEFT JOIN customers c ON i.customer_id = c.id
                WHERE i.deleted_at IS NULL
                ORDER BY i.created_at DESC
                LIMIT 10"#,
-        )
-        .fetch_all(&state.db)
-        .await
-        .map_err(rustbill_core::error::BillingError::from)?;
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
 
     let reports: Vec<serde_json::Value> = recent_invoices
         .iter()
-        .map(|(id, inv_number, status, _total, created_at, customer_name)| {
-            let cust = customer_name.as_deref().unwrap_or("Unknown");
-            let date_str = created_at.format("%b %d, %Y").to_string();
-            let report_status = if status == "draft" { "generating" } else { "ready" };
-            serde_json::json!({
-                "id": id,
-                "name": format!("Invoice {} — {}", inv_number, cust),
-                "type": "Invoice",
-                "date": date_str,
-                "status": report_status,
-            })
-        })
+        .map(
+            |(id, inv_number, status, _total, created_at, customer_name)| {
+                let cust = customer_name.as_deref().unwrap_or("Unknown");
+                let date_str = created_at.format("%b %d, %Y").to_string();
+                let report_status = if status == "draft" {
+                    "generating"
+                } else {
+                    "ready"
+                };
+                serde_json::json!({
+                    "id": id,
+                    "name": format!("Invoice {} — {}", inv_number, cust),
+                    "type": "Invoice",
+                    "date": date_str,
+                    "status": report_status,
+                })
+            },
+        )
         .collect();
 
     Ok(Json(serde_json::json!({

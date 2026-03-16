@@ -55,18 +55,18 @@ pub fn build_router(state: SharedState) -> Router {
             state.clone(),
             crate::middleware::api_key_auth::require_api_key,
         ))
-        .layer(CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any));
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
 
     // Auth routes — no session required
-    let auth_routes = Router::new()
-        .nest("/api/auth", routes::auth::router());
+    let auth_routes = Router::new().nest("/api/auth", routes::auth::router());
 
     // Inbound webhooks — no session, signature verification only
-    let webhook_routes = Router::new()
-        .nest("/api/billing", routes::webhooks_inbound::router());
+    let webhook_routes = Router::new().nest("/api/billing", routes::webhooks_inbound::router());
 
     // Admin API — session required (middleware applied per-group)
     let admin_api = Router::new()
@@ -85,8 +85,7 @@ pub fn build_router(state: SharedState) -> Router {
         ));
 
     // Health check
-    let health = Router::new()
-        .route("/health", axum::routing::get(|| async { "ok" }));
+    let health = Router::new().route("/health", axum::routing::get(|| async { "ok" }));
 
     Router::new()
         .merge(health)

@@ -4,8 +4,8 @@ pub mod deals;
 pub mod licenses;
 pub mod products;
 
-use axum::Router;
 use crate::app::SharedState;
+use axum::Router;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -14,5 +14,5 @@ pub fn router() -> Router<SharedState> {
         .nest("/deals", deals::router())
         .nest("/licenses", licenses::router())
         .nest("/billing", billing::router())
-        // API key authentication is applied via middleware in the app router builder
+    // API key authentication is applied via middleware in the app router builder
 }

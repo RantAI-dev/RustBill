@@ -1,6 +1,10 @@
-use axum::{extract::{Path, State}, routing::get, Json, Router};
 use crate::app::SharedState;
 use crate::routes::ApiResult;
+use axum::{
+    extract::{Path, State},
+    routing::get,
+    Json, Router,
+};
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -8,9 +12,7 @@ pub fn router() -> Router<SharedState> {
         .route("/{id}", get(get_one))
 }
 
-async fn list(
-    State(state): State<SharedState>,
-) -> ApiResult<Json<Vec<serde_json::Value>>> {
+async fn list(State(state): State<SharedState>) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let products = rustbill_core::products::list_products(&state.db).await?;
     Ok(Json(products))
 }
