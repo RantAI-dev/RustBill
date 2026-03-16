@@ -4,7 +4,7 @@ use crate::routes::ApiResult;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::get,
     Json, Router,
 };
 use rustbill_core::db::models::UserRole;

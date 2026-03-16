@@ -4,7 +4,7 @@ use crate::extractors::AdminUser;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post},
+    routing::{delete, get},
     Json, Router,
 };
 
@@ -19,7 +19,7 @@ async fn list(
     _user: AdminUser,
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"SELECT to_jsonb(k) - 'hashed_key' FROM api_keys k
+        r#"SELECT to_jsonb(k) - 'key_hash' FROM api_keys k
            ORDER BY k.created_at DESC"#,
     )
     .fetch_all(&state.db)
@@ -35,21 +35,19 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let name = body["name"].as_str().unwrap_or("default");
-    let scopes = body.get("scopes").cloned().unwrap_or(serde_json::json!([]));
 
     // Generate a random API key
     let key_plain = rustbill_core::auth::generate_api_key();
     let hashed = rustbill_core::auth::hash_api_key(&key_plain);
 
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO api_keys (id, name, prefix, hashed_key, scopes, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, now())
-           RETURNING to_jsonb(api_keys) - 'hashed_key'"#,
+        r#"INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, now())
+           RETURNING to_jsonb(api_keys) - 'key_hash'"#,
     )
     .bind(name)
     .bind(&key_plain[..12])
     .bind(&hashed)
-    .bind(&scopes)
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -67,7 +65,7 @@ async fn revoke(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let result =
-        sqlx::query("UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL")
+        sqlx::query("UPDATE api_keys SET status = 'revoked' WHERE id = $1 AND status = 'active'")
             .bind(&id)
             .execute(&state.db)
             .await

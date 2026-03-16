@@ -4,7 +4,7 @@ use crate::extractors::{AdminUser, ValidatedJson};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post, put},
+    routing::get,
     Json, Router,
 };
 use rustbill_core::products::validation::{CreateProductRequest, UpdateProductRequest};

@@ -8,7 +8,6 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use rustbill_core::auth::api_key::ApiKeyInfo;
 
 /// Middleware that requires a valid API key in Authorization: Bearer header.
 pub async fn require_api_key(

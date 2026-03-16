@@ -1,4 +1,4 @@
-use crate::db::models::{PaymentMethod, Trend};
+use crate::db::models::PaymentMethod;
 use serde::Deserialize;
 use validator::Validate;
 

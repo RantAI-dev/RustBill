@@ -1,4 +1,5 @@
 //! Shared test helpers for integration tests.
+#![allow(dead_code)]
 
 use axum_test::TestServer;
 use rustbill_core::auth::api_key::{generate_api_key, get_key_prefix, hash_api_key};

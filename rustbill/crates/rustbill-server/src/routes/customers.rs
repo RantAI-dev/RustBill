@@ -1,10 +1,10 @@
 use super::ApiResult;
 use crate::app::SharedState;
-use crate::extractors::{AdminUser, ValidatedJson};
+use crate::extractors::AdminUser;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, post, put},
+    routing::get,
     Json, Router,
 };
 

@@ -1,7 +1,7 @@
 use crate::app::SharedState;
 use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use axum::{extract::State, routing::post, Json, Router};
 
 pub fn router() -> Router<SharedState> {
     Router::new()

@@ -3,7 +3,6 @@
 use crate::config::CronConfig;
 use crate::notifications::email::EmailSender;
 use sqlx::PgPool;
-use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
 /// Start the background scheduler for subscription lifecycle and dunning.
