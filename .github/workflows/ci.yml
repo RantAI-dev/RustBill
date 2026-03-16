@@ -74,6 +74,6 @@ jobs:
 
       - name: Run tests
         working-directory: rustbill
-        run: cargo test --test-threads=1
+        run: cargo test -- --test-threads=1
         env:
           DATABASE_URL: postgresql://rantai_billing:rantai_billing@localhost:5433/rantai_billing_test
