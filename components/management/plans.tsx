@@ -187,32 +187,31 @@ export function ManagePlansSection() {
 
   const handleSubmit = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      if (dialogMode === "create") {
-        await createPlan(data);
+    if (dialogMode === "create") {
+      const result = await createPlan(data);
+      if (result.success) {
         toast.success("Plan created");
-      } else {
-        await updatePlan(selected!.id as string, data);
-        toast.success("Plan updated");
+        setDialogOpen(false);
+        mutate();
       }
-      setDialogOpen(false);
-      mutate();
-    } catch {
-      toast.error("Failed to save plan");
-    } finally {
-      setSaving(false);
+    } else {
+      const result = await updatePlan(selected!.id as string, data);
+      if (result.success) {
+        toast.success("Plan updated");
+        setDialogOpen(false);
+        mutate();
+      }
     }
+    setSaving(false);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await deletePlan(deleteTarget.id as string);
+    const result = await deletePlan(deleteTarget.id as string);
+    if (result.success) {
       toast.success("Plan deleted");
       setDeleteTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to delete plan");
     }
   };
 

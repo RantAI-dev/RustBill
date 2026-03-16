@@ -200,23 +200,24 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
       return;
     }
     setSubmitting(true);
-    try {
-      const data: Record<string, unknown> = { customerId, productId, dealType, value, date, notes: notes || null, company: "_", contact: "_", email: "x@x.com", productName: "_", productType: "licensed" as const };
-      if (licenseExpiresAt) data.licenseExpiresAt = licenseExpiresAt;
-      if (isEditing) {
-        await updateDeal(deal.id as string, data);
+    const data: Record<string, unknown> = { customerId, productId, dealType, value, date, notes: notes || null, company: "_", contact: "_", email: "x@x.com", productName: "_", productType: "licensed" as const };
+    if (licenseExpiresAt) data.licenseExpiresAt = licenseExpiresAt;
+    if (isEditing) {
+      const result = await updateDeal(deal.id as string, data);
+      if (result.success) {
         toast.success("Deal updated");
-      } else {
-        await createDeal(data);
-        toast.success("Deal created");
+        onSuccess();
+        onClose();
       }
-      onSuccess();
-      onClose();
-    } catch {
-      toast.error(isEditing ? "Failed to update" : "Failed to create");
-    } finally {
-      setSubmitting(false);
+    } else {
+      const result = await createDeal(data);
+      if (result.success) {
+        toast.success("Deal created");
+        onSuccess();
+        onClose();
+      }
     }
+    setSubmitting(false);
   };
 
   return (
@@ -414,29 +415,24 @@ export function ManageDealsSection() {
   };
 
   const handleGenerateKey = async (dealId: string) => {
-    try {
-      // The API auto-generates key + license record for licensed deals
-      await updateDeal(dealId, {});
+    // The API auto-generates key + license record for licensed deals
+    const result = await updateDeal(dealId, {});
+    if (result.success) {
       mutate();
       toast.success("License key generated");
-    } catch {
-      toast.error("Failed to generate key");
     }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
-    try {
-      await deleteDeal(deleteTarget.id as string);
+    const result = await deleteDeal(deleteTarget.id as string);
+    if (result.success) {
       mutate();
       toast.success("Deal deleted");
       setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete deal");
-    } finally {
-      setDeleteLoading(false);
     }
+    setDeleteLoading(false);
   };
 
   if (isLoading) {

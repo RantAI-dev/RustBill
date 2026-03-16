@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: rantai_billing
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rantai_billing_prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: rantai_billing
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -14,6 +14,34 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  rust-backend:
+    image: ${RUST_BACKEND_IMAGE:-rantai-billing-rs:latest}
+    container_name: rantai-billing-rs
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://rantai_billing:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/rantai_billing
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
   app:
     image: rantai-billing:latest
@@ -21,19 +49,25 @@ services:
     restart: unless-stopped
     ports:
       - "${APP_PORT:-13300}:3000"
+    environment:
+      RUST_BACKEND_URL: http://rust-backend:8080
+      NODE_ENV: production
     env_file:
       - .env
-    environment:
-      DATABASE_URL: postgresql://rantai_billing:${POSTGRES_PASSWORD:-rantai_billing_prod}@postgres:5432/rantai_billing
     depends_on:
-      postgres:
+      rust-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/login || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
 volumes:
   pgdata:

@@ -281,16 +281,13 @@ function ApiKeysTab() {
       return;
     }
     setCreating(true);
-    try {
-      const result = await createApiKey({ name: newKeyName.trim() });
-      setCreatedKey(result.key);
+    const result = await createApiKey({ name: newKeyName.trim() });
+    if (result.success) {
+      setCreatedKey(result.data.key);
       mutate();
       toast.success("API key created");
-    } catch {
-      toast.error("Failed to create API key");
-    } finally {
-      setCreating(false);
     }
+    setCreating(false);
   };
 
   const handleCloseCreate = () => {
@@ -308,16 +305,13 @@ function ApiKeysTab() {
   const handleRevoke = async () => {
     if (!revokeTarget) return;
     setRevoking(true);
-    try {
-      await revokeApiKey(revokeTarget.id as string);
+    const result = await revokeApiKey(revokeTarget.id as string);
+    if (result.success) {
       mutate();
       toast.success("API key revoked");
       setRevokeTarget(null);
-    } catch {
-      toast.error("Failed to revoke API key");
-    } finally {
-      setRevoking(false);
     }
+    setRevoking(false);
   };
 
   return (
@@ -716,20 +710,15 @@ function LicenseSigningTab() {
 
   const handleGenerate = async (confirm?: boolean) => {
     setGenerating(true);
-    try {
-      await generateKeypair(confirm);
+    const result = await generateKeypair(confirm);
+    if (result.success) {
       mutate();
       toast.success("Signing keypair generated");
       setConfirmRegenOpen(false);
-    } catch (err) {
-      if ((err as Error & { status?: number }).status === 409) {
-        setConfirmRegenOpen(true);
-      } else {
-        toast.error("Failed to generate keypair");
-      }
-    } finally {
-      setGenerating(false);
+    } else if (result.status === 409) {
+      setConfirmRegenOpen(true);
     }
+    setGenerating(false);
   };
 
   const handleCopyPublicKey = () => {
@@ -755,14 +744,11 @@ function LicenseSigningTab() {
     }
     setVerifying(true);
     setVerifyResult(null);
-    try {
-      const result = await verifyLicenseFile(licenseFileContent);
-      setVerifyResult(result);
-    } catch {
-      toast.error("Failed to verify license file");
-    } finally {
-      setVerifying(false);
+    const result = await verifyLicenseFile(licenseFileContent);
+    if (result.success) {
+      setVerifyResult(result.data);
     }
+    setVerifying(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

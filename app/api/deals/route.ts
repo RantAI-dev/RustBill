@@ -96,16 +96,9 @@ export async function POST(req: NextRequest) {
       .from(systemSettings)
       .where(eq(systemSettings.key, "license_signing_private_key"));
 
-    const licenseValues: Record<string, unknown> = {
-      key,
-      customerId: data.customerId ?? null,
-      customerName,
-      productId: data.productId ?? null,
-      productName,
-      status: "active",
-      createdAt,
-      expiresAt,
-    };
+    let licenseType = "simple";
+    let signedPayload: string | null = null;
+    let signature: string | null = null;
 
     // Auto-sign if keypair exists
     if (privateKeySetting) {
@@ -120,12 +113,24 @@ export async function POST(req: NextRequest) {
         expiresAt,
       };
       const signed = signLicense(payload, privateKeySetting.value);
-      licenseValues.licenseType = "signed";
-      licenseValues.signedPayload = JSON.stringify(signed.payload);
-      licenseValues.signature = signed.signature;
+      licenseType = "signed";
+      signedPayload = JSON.stringify(signed.payload);
+      signature = signed.signature;
     }
 
-    await db.insert(licenses).values(licenseValues);
+    await db.insert(licenses).values({
+      key,
+      customerId: data.customerId ?? null,
+      customerName,
+      productId: data.productId ?? null,
+      productName,
+      status: "active",
+      createdAt,
+      expiresAt,
+      licenseType,
+      signedPayload,
+      signature,
+    });
   }
 
   const [row] = await db.insert(deals).values(data).returning();

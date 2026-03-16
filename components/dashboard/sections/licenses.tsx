@@ -58,10 +58,10 @@ function SignLicenseDialog({ license, open, onOpenChange, onSuccess }: {
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
-  const [features, setFeatures] = useState<string[]>((license as Record<string, unknown>).features as string[] ?? []);
+  const [features, setFeatures] = useState<string[]>(license.features ?? []);
   const [featureInput, setFeatureInput] = useState("");
   const [maxActivations, setMaxActivations] = useState<string>(
-    (license as Record<string, unknown>).maxActivations ? String((license as Record<string, unknown>).maxActivations) : "",
+    license.maxActivations ? String(license.maxActivations) : "",
   );
   const [loading, setLoading] = useState(false);
 
@@ -79,22 +79,19 @@ function SignLicenseDialog({ license, open, onOpenChange, onSuccess }: {
 
   const handleSign = async () => {
     setLoading(true);
-    try {
-      await signLicenseKey(license.key, {
-        features,
-        maxActivations: maxActivations ? parseInt(maxActivations, 10) : undefined,
-      });
+    const result = await signLicenseKey(license.key, {
+      features,
+      maxActivations: maxActivations ? parseInt(maxActivations, 10) : undefined,
+    });
+    if (result.success) {
       toast.success("License signed successfully");
       onSuccess();
       onOpenChange(false);
-    } catch {
-      toast.error("Failed to sign license. Make sure a signing keypair is configured in Settings.");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
-  const hasCertificate = !!(license as Record<string, unknown>).hasCertificate;
+  const hasCertificate = !!license.hasCertificate;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,15 +178,14 @@ function LicenseDetail({ license, onDelete, onCopyKey, onRevoke, onExtend, onSig
   onMutate: () => void;
 }) {
   const key = license.key;
-  const lic = license as Record<string, unknown>;
   const { data: activationData, mutate: mutateActivations } = useLicenseActivations(key);
   const [deactivating, setDeactivating] = useState<string | null>(null);
   const status = license.status;
   const statusCls = getStatusColor(status);
-  const licenseType = ((lic.licenseType as string) || "simple") as "simple" | "signed";
+  const licenseType = license.licenseType ?? "simple";
   const typeBadge = getLicenseTypeBadge(licenseType);
-  const features = (lic.features as string[] | null) ?? [];
-  const hasCertificate = !!lic.hasCertificate;
+  const features = license.features ?? [];
+  const hasCertificate = !!license.hasCertificate;
 
   const labelClass = "text-xs text-muted-foreground uppercase tracking-wider";
   const valueClass = "text-sm font-medium text-foreground mt-0.5";
@@ -270,7 +266,7 @@ function LicenseDetail({ license, onDelete, onCopyKey, onRevoke, onExtend, onSig
                 {activationData && (
                   <span className="text-foreground font-medium ml-1">
                     {activationData.activations?.length ?? 0}
-                    {lic.maxActivations ? ` / ${lic.maxActivations}` : ""}
+                    {license.maxActivations ? ` / ${license.maxActivations}` : ""}
                   </span>
                 )}
               </span>
@@ -308,16 +304,13 @@ function LicenseDetail({ license, onDelete, onCopyKey, onRevoke, onExtend, onSig
                           disabled={deactivating === a.deviceId}
                           onClick={async () => {
                             setDeactivating(a.deviceId);
-                            try {
-                              await deactivateDevice(key, a.deviceId);
+                            const result = await deactivateDevice(key, a.deviceId);
+                            if (result.success) {
                               mutateActivations();
                               onMutate();
                               toast.success("Device deactivated");
-                            } catch {
-                              toast.error("Failed to deactivate device");
-                            } finally {
-                              setDeactivating(null);
                             }
+                            setDeactivating(null);
                           }}
                           className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
                           title="Deactivate device"
@@ -440,42 +433,35 @@ export function LicensesSection() {
   };
 
   const handleRevoke = async (key: string) => {
-    try {
-      await updateLicense(key, { status: "revoked" });
+    const result = await updateLicense(key, { status: "revoked" });
+    if (result.success) {
       mutate();
       toast.success("License revoked");
       closeDialog();
-    } catch {
-      toast.error("Failed to revoke license");
     }
   };
 
   const handleExtend = async (key: string, currentExpiry: string) => {
-    try {
-      const d = new Date(currentExpiry);
-      d.setFullYear(d.getFullYear() + 1);
-      await updateLicense(key, { expiresAt: d.toISOString().split("T")[0] });
+    const d = new Date(currentExpiry);
+    d.setFullYear(d.getFullYear() + 1);
+    const result = await updateLicense(key, { expiresAt: d.toISOString().split("T")[0] });
+    if (result.success) {
       mutate();
       toast.success("License extended by 1 year");
       closeDialog();
-    } catch {
-      toast.error("Failed to extend license");
     }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
-    try {
-      await deleteLicense(deleteTarget.key);
+    const result = await deleteLicense(deleteTarget.key);
+    if (result.success) {
       mutate();
       toast.success("License deleted");
       setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete license");
-    } finally {
-      setDeleteLoading(false);
     }
+    setDeleteLoading(false);
   };
 
   if (isLoading) {
@@ -559,10 +545,9 @@ export function LicensesSection() {
               {paginatedLicenses.map((license, index) => {
                 const StatusIcon = statusIcons[license.status];
                 const statusColor = getStatusColor(license.status);
-                const lic = license as Record<string, unknown>;
-                const licenseType = ((lic.licenseType as string) || "simple") as "simple" | "signed";
+                const licenseType = license.licenseType ?? "simple";
                 const typeBadge = getLicenseTypeBadge(licenseType);
-                const hasCertificate = !!lic.hasCertificate;
+                const hasCertificate = !!license.hasCertificate;
 
                 return (
                   <tr

@@ -73,16 +73,15 @@ export function BillingPortalSection() {
   const handlePay = async (provider: PaymentProvider) => {
     if (!payInvoice) return;
     setPayingWith(provider);
-    try {
-      const { checkoutUrl } = await getCheckout(payInvoice.id as string, provider);
-      window.open(checkoutUrl, "_blank");
-      setPayDialogOpen(false);
-      setPayInvoice(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Checkout failed");
-    } finally {
-      setPayingWith(null);
+    const result = await getCheckout(payInvoice.id as string, provider);
+    setPayingWith(null);
+    if (!result.success) {
+      toast.error(result.error ?? "Checkout failed");
+      return;
     }
+    window.open(result.data.checkoutUrl, "_blank");
+    setPayDialogOpen(false);
+    setPayInvoice(null);
   };
 
   // Auto-select first customer

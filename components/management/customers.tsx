@@ -229,32 +229,33 @@ function CustomerForm({ customer, onClose, onSuccess }: { customer: Customer | n
       return;
     }
     setSubmitting(true);
-    try {
-      const data = {
-        name, industry, tier, location, contact, email, phone,
-        billingEmail: billingEmail || null,
-        billingAddress: billingAddress || null,
-        billingCity: billingCity || null,
-        billingState: billingState || null,
-        billingZip: billingZip || null,
-        billingCountry: billingCountry || null,
-        taxId: taxId || null,
-        defaultPaymentMethod: defaultPaymentMethod || null,
-      };
-      if (isEditing) {
-        await updateCustomer(customer.id as string, data);
+    const data = {
+      name, industry, tier, location, contact, email, phone,
+      billingEmail: billingEmail || null,
+      billingAddress: billingAddress || null,
+      billingCity: billingCity || null,
+      billingState: billingState || null,
+      billingZip: billingZip || null,
+      billingCountry: billingCountry || null,
+      taxId: taxId || null,
+      defaultPaymentMethod: defaultPaymentMethod || null,
+    };
+    if (isEditing) {
+      const result = await updateCustomer(customer.id as string, data);
+      if (result.success) {
         toast.success(`"${name}" updated`);
-      } else {
-        await createCustomer(data);
-        toast.success(`"${name}" created`);
+        onSuccess();
+        onClose();
       }
-      onSuccess();
-      onClose();
-    } catch {
-      toast.error(isEditing ? "Failed to update" : "Failed to create");
-    } finally {
-      setSubmitting(false);
+    } else {
+      const result = await createCustomer(data);
+      if (result.success) {
+        toast.success(`"${name}" created`);
+        onSuccess();
+        onClose();
+      }
     }
+    setSubmitting(false);
   };
 
   return (
@@ -375,16 +376,13 @@ export function ManageCustomersSection() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
-    try {
-      await deleteCustomer(deleteTarget.id as string);
+    const result = await deleteCustomer(deleteTarget.id as string);
+    if (result.success) {
       mutate();
       toast.success(`"${deleteTarget.name}" deleted`);
       setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete customer");
-    } finally {
-      setDeleteLoading(false);
     }
+    setDeleteLoading(false);
   };
 
   const getHealthColor = (score: number) => {

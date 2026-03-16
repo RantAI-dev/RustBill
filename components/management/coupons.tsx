@@ -157,32 +157,31 @@ export function ManageCouponsSection() {
 
   const handleSubmit = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      if (dialogMode === "create") {
-        await createCoupon(data);
+    if (dialogMode === "create") {
+      const result = await createCoupon(data);
+      if (result.success) {
         toast.success("Coupon created");
-      } else {
-        await updateCoupon(selected!.id as string, data);
-        toast.success("Coupon updated");
+        setDialogOpen(false);
+        mutate();
       }
-      setDialogOpen(false);
-      mutate();
-    } catch {
-      toast.error("Failed to save coupon");
-    } finally {
-      setSaving(false);
+    } else {
+      const result = await updateCoupon(selected!.id as string, data);
+      if (result.success) {
+        toast.success("Coupon updated");
+        setDialogOpen(false);
+        mutate();
+      }
     }
+    setSaving(false);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await deleteCoupon(deleteTarget.id as string);
+    const result = await deleteCoupon(deleteTarget.id as string);
+    if (result.success) {
       toast.success("Coupon deleted");
       setDeleteTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to delete coupon");
     }
   };
 

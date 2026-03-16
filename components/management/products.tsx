@@ -178,28 +178,29 @@ function ProductForm({ product, onClose, onSuccess }: { product: Product | null;
   const handleSubmit = async () => {
     if (!name.trim()) { toast.error("Name is required"); return; }
     setSubmitting(true);
-    try {
-      const base = { name, productType, target };
-      const data = productType === "licensed"
-        ? { ...base }
-        : productType === "saas"
-          ? { ...base, mau, dau, freeUsers, paidUsers, churnRate }
-          : { ...base, apiCalls, activeDevelopers, avgLatency };
+    const base = { name, productType, target };
+    const data = productType === "licensed"
+      ? { ...base }
+      : productType === "saas"
+        ? { ...base, mau, dau, freeUsers, paidUsers, churnRate }
+        : { ...base, apiCalls, activeDevelopers, avgLatency };
 
-      if (isEditing) {
-        await updateProduct(product.id as string, data);
+    if (isEditing) {
+      const result = await updateProduct(product.id as string, data);
+      if (result.success) {
         toast.success(`"${name}" updated`);
-      } else {
-        await createProduct(data);
-        toast.success(`"${name}" created`);
+        onSuccess();
+        onClose();
       }
-      onSuccess();
-      onClose();
-    } catch {
-      toast.error(isEditing ? "Failed to update" : "Failed to create");
-    } finally {
-      setSubmitting(false);
+    } else {
+      const result = await createProduct(data);
+      if (result.success) {
+        toast.success(`"${name}" created`);
+        onSuccess();
+        onClose();
+      }
     }
+    setSubmitting(false);
   };
 
   return (
@@ -300,16 +301,13 @@ export function ManageProductsSection() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
-    try {
-      await deleteProduct(deleteTarget.id as string);
+    const result = await deleteProduct(deleteTarget.id as string);
+    if (result.success) {
       mutate();
       toast.success(`"${deleteTarget.name}" deleted`);
       setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete product");
-    } finally {
-      setDeleteLoading(false);
     }
+    setDeleteLoading(false);
   };
 
   if (isLoading) {

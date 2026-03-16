@@ -47,19 +47,16 @@ function SignLicenseDialog({ license, open, onOpenChange, onSuccess }: {
 
   const handleSign = async () => {
     setLoading(true);
-    try {
-      await signLicenseKey(license.key as string, {
-        features,
-        maxActivations: maxActivations ? parseInt(maxActivations, 10) : undefined,
-      });
+    const result = await signLicenseKey(license.key as string, {
+      features,
+      maxActivations: maxActivations ? parseInt(maxActivations, 10) : undefined,
+    });
+    if (result.success) {
       toast.success("License signed successfully");
       onSuccess();
       onOpenChange(false);
-    } catch {
-      toast.error("Failed to sign license. Make sure a signing keypair is configured in Settings.");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   return (
@@ -273,16 +270,13 @@ function LicenseDetail({ license, onDelete, onCopyKey, onRevoke, onExtend, onSig
                           disabled={deactivating === a.deviceId}
                           onClick={async () => {
                             setDeactivating(a.deviceId);
-                            try {
-                              await deactivateDevice(key, a.deviceId);
+                            const result = await deactivateDevice(key, a.deviceId);
+                            if (result.success) {
                               mutateActivations();
                               onMutate();
                               toast.success("Device deactivated");
-                            } catch {
-                              toast.error("Failed to deactivate device");
-                            } finally {
-                              setDeactivating(null);
                             }
+                            setDeactivating(null);
                           }}
                           className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
                           title="Deactivate device"
@@ -382,42 +376,35 @@ export function ManageLicensesSection() {
   };
 
   const handleRevoke = async (key: string) => {
-    try {
-      await updateLicense(key, { status: "revoked" });
+    const result = await updateLicense(key, { status: "revoked" });
+    if (result.success) {
       mutate();
       toast.success("License revoked");
       closeDialog();
-    } catch {
-      toast.error("Failed to revoke license");
     }
   };
 
   const handleExtend = async (key: string, currentExpiry: string) => {
-    try {
-      const d = new Date(currentExpiry);
-      d.setFullYear(d.getFullYear() + 1);
-      await updateLicense(key, { expiresAt: d.toISOString().split("T")[0] });
+    const d = new Date(currentExpiry);
+    d.setFullYear(d.getFullYear() + 1);
+    const result = await updateLicense(key, { expiresAt: d.toISOString().split("T")[0] });
+    if (result.success) {
       mutate();
       toast.success("License extended by 1 year");
       closeDialog();
-    } catch {
-      toast.error("Failed to extend license");
     }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
-    try {
-      await deleteLicense(deleteTarget.key as string);
+    const result = await deleteLicense(deleteTarget.key as string);
+    if (result.success) {
       mutate();
       toast.success("License deleted");
       setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete license");
-    } finally {
-      setDeleteLoading(false);
     }
+    setDeleteLoading(false);
   };
 
   if (isLoading) {

@@ -646,92 +646,81 @@ export function ManageInvoicesSection() {
 
   const handleSubmit = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      if (dialogMode === "create") {
-        await createInvoice(data);
+    if (dialogMode === "create") {
+      const result = await createInvoice(data);
+      if (result.success) {
         toast.success("Invoice created");
-      } else {
-        await updateInvoice(selected!.id as string, data);
-        toast.success("Invoice updated");
+        setDialogOpen(false);
+        mutate();
       }
-      setDialogOpen(false);
-      mutate();
-    } catch {
-      toast.error("Failed to save invoice");
-    } finally {
-      setSaving(false);
+    } else {
+      const result = await updateInvoice(selected!.id as string, data);
+      if (result.success) {
+        toast.success("Invoice updated");
+        setDialogOpen(false);
+        mutate();
+      }
     }
+    setSaving(false);
   };
 
   const handlePayment = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      await createPayment(data);
+    const result = await createPayment(data);
+    if (result.success) {
       toast.success("Payment recorded");
       setPaymentDialogOpen(false);
       setPaymentTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to record payment");
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const handleCreditNote = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      await createCreditNote(data);
+    const result = await createCreditNote(data);
+    if (result.success) {
       toast.success("Credit note issued");
       setCreditNoteDialogOpen(false);
       setCreditNoteTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to issue credit note");
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const handleRefund = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      await createRefund(data);
+    const result = await createRefund(data);
+    if (result.success) {
       toast.success("Refund processed");
       setRefundDialogOpen(false);
       setRefundTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to process refund");
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const handleCheckout = async (provider: "stripe" | "xendit" | "lemonsqueezy") => {
     if (!checkoutTarget) return;
     setCheckoutLoading(provider);
-    try {
-      const { checkoutUrl } = await getCheckout(checkoutTarget.id as string, provider);
-      navigator.clipboard.writeText(checkoutUrl);
-      toast.success(`${provider} checkout link copied to clipboard`);
-      window.open(checkoutUrl, "_blank");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate checkout link");
-    } finally {
-      setCheckoutLoading(null);
+    const result = await getCheckout(checkoutTarget.id as string, provider);
+    setCheckoutLoading(null);
+    if (!result.success) {
+      toast.error(result.error ?? "Failed to generate checkout link");
+      return;
     }
+    navigator.clipboard.writeText(result.data.checkoutUrl);
+    toast.success(`${provider} checkout link copied to clipboard`);
+    window.open(result.data.checkoutUrl, "_blank");
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await deleteInvoice(deleteTarget.id as string);
+    const result = await deleteInvoice(deleteTarget.id as string);
+    if (result.success) {
       toast.success("Invoice deleted");
       setDeleteTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to delete invoice");
     }
   };
 

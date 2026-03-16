@@ -142,22 +142,23 @@ function WebhookForm({ webhook, onClose, onSuccess }: { webhook: Webhook | null;
       return;
     }
     setSubmitting(true);
-    try {
-      const data = { url, description: description || null, events, status };
-      if (isEditing) {
-        await updateWebhook(webhook.id as string, data);
+    const data = { url, description: description || null, events, status };
+    if (isEditing) {
+      const result = await updateWebhook(webhook.id as string, data);
+      if (result.success) {
         toast.success("Webhook updated");
-      } else {
-        await createWebhook(data);
-        toast.success("Webhook created");
+        onSuccess();
+        onClose();
       }
-      onSuccess();
-      onClose();
-    } catch {
-      toast.error(isEditing ? "Failed to update" : "Failed to create");
-    } finally {
-      setSubmitting(false);
+    } else {
+      const result = await createWebhook(data);
+      if (result.success) {
+        toast.success("Webhook created");
+        onSuccess();
+        onClose();
+      }
     }
+    setSubmitting(false);
   };
 
   return (
@@ -233,16 +234,13 @@ export function ManageWebhooksSection() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleteLoading(true);
-    try {
-      await deleteWebhook(deleteTarget.id as string);
+    const result = await deleteWebhook(deleteTarget.id as string);
+    if (result.success) {
       mutate();
       toast.success("Webhook deleted");
       setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete webhook");
-    } finally {
-      setDeleteLoading(false);
     }
+    setDeleteLoading(false);
   };
 
   if (isLoading) {

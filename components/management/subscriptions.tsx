@@ -238,32 +238,31 @@ export function ManageSubscriptionsSection() {
 
   const handleSubmit = async (data: Record<string, unknown>) => {
     setSaving(true);
-    try {
-      if (dialogMode === "create") {
-        await createSubscription(data);
+    if (dialogMode === "create") {
+      const result = await createSubscription(data);
+      if (result.success) {
         toast.success("Subscription created");
-      } else {
-        await updateSubscription(selected!.id as string, data);
-        toast.success("Subscription updated");
+        setDialogOpen(false);
+        mutate();
       }
-      setDialogOpen(false);
-      mutate();
-    } catch {
-      toast.error("Failed to save subscription");
-    } finally {
-      setSaving(false);
+    } else {
+      const result = await updateSubscription(selected!.id as string, data);
+      if (result.success) {
+        toast.success("Subscription updated");
+        setDialogOpen(false);
+        mutate();
+      }
     }
+    setSaving(false);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    try {
-      await deleteSubscription(deleteTarget.id as string);
+    const result = await deleteSubscription(deleteTarget.id as string);
+    if (result.success) {
       toast.success("Subscription deleted");
       setDeleteTarget(null);
       mutate();
-    } catch {
-      toast.error("Failed to delete subscription");
     }
   };
 

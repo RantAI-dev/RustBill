@@ -25,6 +25,8 @@ import { ManageInvoicesSection } from "@/components/management/invoices";
 import { ManageCouponsSection } from "@/components/management/coupons";
 import { ManageWebhooksSection } from "@/components/management/webhooks";
 import { BillingPortalSection } from "@/components/dashboard/sections/billing-portal";
+import { ApiProvider } from "@/hooks/use-api";
+import { BackendBanner } from "@/components/backend-banner";
 
 export type Section =
   | "overview" | "trials" | "deals" | "customers" | "licenses" | "products" | "forecasting" | "reports" | "settings" | "api-docs" | "billing"
@@ -90,6 +92,7 @@ export default function Dashboard() {
   };
 
   return (
+    <ApiProvider>
     <div className="flex min-h-screen bg-background">
       <Sidebar
         activeSection={activeSection}
@@ -102,6 +105,7 @@ export default function Dashboard() {
           sidebarCollapsed ? "ml-[72px]" : "ml-[260px]"
         }`}
       >
+        <BackendBanner />
         <Header activeSection={activeSection} onOpenSearch={openSearch} />
         <main className="flex-1 p-6 overflow-auto">
           <div
@@ -114,5 +118,6 @@ export default function Dashboard() {
       </div>
       <CommandPalette onNavigate={setActiveSection} />
     </div>
+    </ApiProvider>
   );
 }
