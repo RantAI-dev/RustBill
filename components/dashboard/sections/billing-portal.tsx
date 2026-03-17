@@ -340,11 +340,11 @@ export function BillingPortalSection() {
                           <span className="text-sm font-medium text-foreground">
                             {(pm.label as string) ?? "Card"}
                           </span>
-                          {pm.lastFour && (
+                          {pm.lastFour ? (
                             <span className="text-xs text-muted-foreground font-mono">
                               **** {pm.lastFour as string}
                             </span>
-                          )}
+                          ) : null}
                           {isDefault && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/20 text-accent">
                               DEFAULT
