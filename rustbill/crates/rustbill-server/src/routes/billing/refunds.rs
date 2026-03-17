@@ -19,7 +19,7 @@ async fn list(
     _user: AdminUser,
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(r) FROM refunds r ORDER BY r.created_at DESC",
+        "SELECT to_jsonb(r) FROM refunds r WHERE r.deleted_at IS NULL ORDER BY r.created_at DESC",
     )
     .fetch_all(&state.db)
     .await
@@ -34,7 +34,7 @@ async fn get_one(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(r) FROM refunds r WHERE r.id = $1",
+        "SELECT to_jsonb(r) FROM refunds r WHERE r.id = $1 AND r.deleted_at IS NULL",
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -54,13 +54,15 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO refunds (id, payment_id, amount, reason, status, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, 'pending', now(), now())
+        r#"INSERT INTO refunds (id, payment_id, invoice_id, amount, reason, status, stripe_refund_id, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'pending', $5, now())
            RETURNING to_jsonb(refunds)"#,
     )
     .bind(body["paymentId"].as_str())
-    .bind(body["amount"].as_i64().unwrap_or(0))
+    .bind(body["invoiceId"].as_str())
+    .bind(body["amount"].as_f64().unwrap_or(0.0))
     .bind(body["reason"].as_str())
+    .bind(body["stripeRefundId"].as_str())
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -77,8 +79,8 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE refunds SET
              status = COALESCE($2, status),
-             updated_at = now()
-           WHERE id = $1
+             processed_at = CASE WHEN $2 = 'completed' THEN now() ELSE processed_at END
+           WHERE id = $1 AND deleted_at IS NULL
            RETURNING to_jsonb(refunds)"#,
     )
     .bind(&id)
@@ -99,11 +101,12 @@ async fn remove(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let result = sqlx::query("DELETE FROM refunds WHERE id = $1")
-        .bind(&id)
-        .execute(&state.db)
-        .await
-        .map_err(rustbill_core::error::BillingError::from)?;
+    let result =
+        sqlx::query("UPDATE refunds SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL")
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
 
     if result.rows_affected() == 0 {
         return Err(rustbill_core::error::BillingError::NotFound {

@@ -55,13 +55,14 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO webhook_endpoints (id, url, events, secret, enabled, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, true, now(), now())
+        r#"INSERT INTO webhook_endpoints (id, url, description, events, secret, status, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'active', now(), now())
            RETURNING to_jsonb(webhook_endpoints)"#,
     )
     .bind(body["url"].as_str())
+    .bind(body["description"].as_str())
     .bind(body.get("events").unwrap_or(&serde_json::json!(["*"])))
-    .bind(body["secret"].as_str())
+    .bind(body["secret"].as_str().unwrap_or("default-secret"))
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -78,16 +79,18 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE webhook_endpoints SET
              url = COALESCE($2, url),
-             events = COALESCE($3, events),
-             enabled = COALESCE($4, enabled),
+             description = COALESCE($3, description),
+             events = COALESCE($4, events),
+             status = COALESCE($5, status),
              updated_at = now()
            WHERE id = $1
            RETURNING to_jsonb(webhook_endpoints)"#,
     )
     .bind(&id)
     .bind(body["url"].as_str())
+    .bind(body["description"].as_str())
     .bind(body.get("events"))
-    .bind(body["enabled"].as_bool())
+    .bind(body["status"].as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?

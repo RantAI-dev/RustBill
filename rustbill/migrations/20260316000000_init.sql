@@ -33,6 +33,7 @@ CREATE TYPE billing_event_type AS ENUM (
 -- ============================================================
 
 CREATE SEQUENCE IF NOT EXISTS invoice_number_seq;
+CREATE SEQUENCE IF NOT EXISTS credit_note_number_seq;
 
 -- ============================================================
 -- TABLES (ordered by foreign-key dependencies)

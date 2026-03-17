@@ -17,7 +17,7 @@ pub fn router() -> Router<SharedState> {
 #[serde(rename_all = "camelCase")]
 struct ListParams {
     r#type: Option<String>,
-    entity_id: Option<String>,
+    resource_id: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }
@@ -33,12 +33,12 @@ async fn list(
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT to_jsonb(e) FROM billing_events e
            WHERE ($1::text IS NULL OR e.event_type = $1)
-             AND ($2::text IS NULL OR e.entity_id = $2)
+             AND ($2::text IS NULL OR e.resource_id = $2)
            ORDER BY e.created_at DESC
            LIMIT $3 OFFSET $4"#,
     )
     .bind(&params.r#type)
-    .bind(&params.entity_id)
+    .bind(&params.resource_id)
     .bind(limit)
     .bind(offset)
     .fetch_all(&state.db)
@@ -48,10 +48,10 @@ async fn list(
     let total: (i64,) = sqlx::query_as(
         r#"SELECT COUNT(*) FROM billing_events e
            WHERE ($1::text IS NULL OR e.event_type = $1)
-             AND ($2::text IS NULL OR e.entity_id = $2)"#,
+             AND ($2::text IS NULL OR e.resource_id = $2)"#,
     )
     .bind(&params.r#type)
-    .bind(&params.entity_id)
+    .bind(&params.resource_id)
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;

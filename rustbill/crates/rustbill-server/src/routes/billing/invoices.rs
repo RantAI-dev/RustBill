@@ -57,18 +57,18 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO invoices (id, customer_id, subscription_id, status, currency, subtotal, tax, total, due_date, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, 'draft', $3, $4, $5, $6, $7, $8, now(), now())
+        r#"INSERT INTO invoices (id, invoice_number, customer_id, subscription_id, status, currency, subtotal, tax, total, due_at, notes, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0'), $1, $2, 'draft', COALESCE($3, 'USD'), $4, $5, $6, $7::timestamp, $8, now(), now())
            RETURNING to_jsonb(invoices)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["subscriptionId"].as_str())
-    .bind(body["currency"].as_str().unwrap_or("USD"))
-    .bind(body["subtotal"].as_i64().unwrap_or(0))
-    .bind(body["tax"].as_i64().unwrap_or(0))
-    .bind(body["total"].as_i64().unwrap_or(0))
-    .bind(body["dueDate"].as_str())
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(body["currency"].as_str())
+    .bind(body["subtotal"].as_f64().unwrap_or(0.0))
+    .bind(body["tax"].as_f64().unwrap_or(0.0))
+    .bind(body["total"].as_f64().unwrap_or(0.0))
+    .bind(body["dueAt"].as_str())
+    .bind(body["notes"].as_str())
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -85,14 +85,17 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE invoices SET
              status = COALESCE($2, status),
-             metadata = COALESCE($3, metadata),
+             notes = COALESCE($3, notes),
+             due_at = COALESCE($4::timestamp, due_at),
+             version = version + 1,
              updated_at = now()
-           WHERE id = $1
+           WHERE id = $1 AND deleted_at IS NULL
            RETURNING to_jsonb(invoices)"#,
     )
     .bind(&id)
     .bind(body["status"].as_str())
-    .bind(body.get("metadata"))
+    .bind(body["notes"].as_str())
+    .bind(body["dueAt"].as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?
@@ -110,7 +113,7 @@ async fn remove(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let result =
-        sqlx::query("UPDATE invoices SET status = 'void', updated_at = now() WHERE id = $1")
+        sqlx::query("UPDATE invoices SET status = 'void', deleted_at = now(), version = version + 1, updated_at = now() WHERE id = $1 AND deleted_at IS NULL")
             .bind(&id)
             .execute(&state.db)
             .await
@@ -133,7 +136,7 @@ async fn list_items(
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(li) FROM invoice_items li WHERE li.invoice_id = $1 ORDER BY li.created_at",
+        "SELECT to_jsonb(li) FROM invoice_items li WHERE li.invoice_id = $1 ORDER BY li.id",
     )
     .bind(&id)
     .fetch_all(&state.db)
@@ -150,15 +153,17 @@ async fn add_item(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, amount, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, now())
+        r#"INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, amount, period_start, period_end)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6::timestamp, $7::timestamp)
            RETURNING to_jsonb(invoice_items)"#,
     )
     .bind(&id)
     .bind(body["description"].as_str())
-    .bind(body["quantity"].as_i64().unwrap_or(1) as i32)
-    .bind(body["unitPrice"].as_i64().unwrap_or(0))
-    .bind(body["amount"].as_i64().unwrap_or(0))
+    .bind(body["quantity"].as_f64().unwrap_or(1.0))
+    .bind(body["unitPrice"].as_f64().unwrap_or(0.0))
+    .bind(body["amount"].as_f64().unwrap_or(0.0))
+    .bind(body["periodStart"].as_str())
+    .bind(body["periodEnd"].as_str())
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;

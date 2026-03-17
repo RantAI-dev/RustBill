@@ -26,7 +26,7 @@ async fn list(
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT to_jsonb(l) FROM licenses l
-           WHERE ($1::text IS NULL OR l.status = $1)
+           WHERE ($1::text IS NULL OR l.status::text = $1)
            ORDER BY l.created_at DESC"#,
     )
     .bind(&params.status)
@@ -60,18 +60,25 @@ async fn create(
     State(state): State<SharedState>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let key = body["key"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("LIC-{}", uuid::Uuid::new_v4()));
+
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO licenses (id, key, product_id, customer_id, deal_id, status, max_activations, metadata, expires_at, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'active', $5, $6, $7, now(), now())
+        r#"INSERT INTO licenses (key, customer_id, customer_name, product_id, product_name, status, created_at, expires_at, license_type, features, max_activations)
+           VALUES ($1, $2, COALESCE($3, ''), $4, COALESCE($5, ''), 'active', to_char(now(), 'YYYY-MM-DD'), COALESCE($6, ''), COALESCE($7, 'simple'), $8, $9)
            RETURNING to_jsonb(licenses)"#,
     )
-    .bind(body["key"].as_str())
-    .bind(body["productId"].as_str())
+    .bind(&key)
     .bind(body["customerId"].as_str())
-    .bind(body["dealId"].as_str())
-    .bind(body["maxActivations"].as_i64().map(|v| v as i32))
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(body["customerName"].as_str())
+    .bind(body["productId"].as_str())
+    .bind(body["productName"].as_str())
     .bind(body["expiresAt"].as_str())
+    .bind(body["licenseType"].as_str())
+    .bind(body.get("features"))
+    .bind(body["maxActivations"].as_i64().map(|v| v as i32))
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -87,18 +94,23 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE licenses SET
              status = COALESCE($2, status),
-             max_activations = COALESCE($3, max_activations),
-             metadata = COALESCE($4, metadata),
-             expires_at = COALESCE($5::timestamptz, expires_at),
-             updated_at = now()
+             customer_name = COALESCE($3, customer_name),
+             product_name = COALESCE($4, product_name),
+             max_activations = COALESCE($5, max_activations),
+             expires_at = COALESCE($6, expires_at),
+             license_type = COALESCE($7, license_type),
+             features = COALESCE($8, features)
            WHERE key = $1
            RETURNING to_jsonb(licenses)"#,
     )
     .bind(&key)
     .bind(body["status"].as_str())
+    .bind(body["customerName"].as_str())
+    .bind(body["productName"].as_str())
     .bind(body["maxActivations"].as_i64().map(|v| v as i32))
-    .bind(body.get("metadata"))
     .bind(body["expiresAt"].as_str())
+    .bind(body["licenseType"].as_str())
+    .bind(body.get("features"))
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?
@@ -160,9 +172,10 @@ async fn verify(
     let status = license["status"].as_str().unwrap_or("unknown");
     let valid = status == "active";
 
-    // Check expiry
+    // Check expiry (expires_at is VARCHAR in 'YYYY-MM-DD' format)
     let expired = license["expires_at"].as_str().map_or(false, |exp| {
-        chrono::DateTime::parse_from_rfc3339(exp).map_or(false, |dt| dt < chrono::Utc::now())
+        chrono::NaiveDate::parse_from_str(exp, "%Y-%m-%d")
+            .map_or(false, |d| d < chrono::Utc::now().date_naive())
     });
 
     if expired {
@@ -175,20 +188,21 @@ async fn verify(
 
     // If device_id provided, record or verify activation
     if let Some(device_id) = device_id {
+        let license_key = license["key"].as_str().unwrap_or_default();
         let max_activations = license["max_activations"].as_i64().unwrap_or(i64::MAX);
 
         let activation_count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM license_activations WHERE license_id = $1")
-                .bind(license["id"].as_str().unwrap_or_default())
+            sqlx::query_as("SELECT COUNT(*) FROM license_activations WHERE license_key = $1")
+                .bind(license_key)
                 .fetch_one(&state.db)
                 .await
                 .map_err(rustbill_core::error::BillingError::from)?;
 
         // Check if this device is already activated
         let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM license_activations WHERE license_id = $1 AND device_id = $2",
+            "SELECT id FROM license_activations WHERE license_key = $1 AND device_id = $2",
         )
-        .bind(license["id"].as_str().unwrap_or_default())
+        .bind(license_key)
         .bind(device_id)
         .fetch_optional(&state.db)
         .await
@@ -205,10 +219,19 @@ async fn verify(
 
         if existing.is_none() {
             sqlx::query(
-                r#"INSERT INTO license_activations (id, license_id, device_id, activated_at)
-                   VALUES (gen_random_uuid()::text, $1, $2, now())"#,
+                r#"INSERT INTO license_activations (id, license_key, device_id, activated_at, last_seen_at)
+                   VALUES (gen_random_uuid()::text, $1, $2, now(), now())"#,
             )
-            .bind(license["id"].as_str().unwrap_or_default())
+            .bind(license_key)
+            .bind(device_id)
+            .execute(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
+        } else {
+            sqlx::query(
+                "UPDATE license_activations SET last_seen_at = now() WHERE license_key = $1 AND device_id = $2",
+            )
+            .bind(license_key)
             .bind(device_id)
             .execute(&state.db)
             .await
@@ -233,8 +256,7 @@ async fn list_activations(
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT to_jsonb(a) FROM license_activations a
-           JOIN licenses l ON l.id = a.license_id
-           WHERE l.key = $1
+           WHERE a.license_key = $1
            ORDER BY a.activated_at DESC"#,
     )
     .bind(&key)

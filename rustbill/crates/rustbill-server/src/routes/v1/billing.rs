@@ -68,7 +68,7 @@ async fn get_invoice(
 
     // Fetch items and payments for the invoice
     let items = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(li) FROM invoice_items li WHERE li.invoice_id = $1 ORDER BY li.created_at",
+        "SELECT to_jsonb(li) FROM invoice_items li WHERE li.invoice_id = $1 ORDER BY li.id",
     )
     .bind(&id)
     .fetch_all(&state.db)
@@ -153,12 +153,13 @@ async fn create_subscription(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', $3, now(), now())
+        r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, quantity, metadata, cancel_at_period_end, version, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', COALESCE($3, 1), $4, false, 1, now(), now())
            RETURNING to_jsonb(subscriptions)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["planId"].as_str())
+    .bind(body["quantity"].as_i64().map(|v| v as i32))
     .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
     .fetch_one(&state.db)
     .await
@@ -216,10 +217,10 @@ async fn list_usage(
     Query(params): Query<UsageListParams>,
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"SELECT to_jsonb(u) FROM usage_records u
+        r#"SELECT to_jsonb(u) FROM usage_events u
            WHERE ($1::text IS NULL OR u.subscription_id = $1)
-             AND ($2::text IS NULL OR u.metric = $2)
-           ORDER BY u.recorded_at DESC"#,
+             AND ($2::text IS NULL OR u.metric_name = $2)
+           ORDER BY u.timestamp DESC"#,
     )
     .bind(&params.subscription_id)
     .bind(&params.metric)
@@ -245,15 +246,16 @@ async fn record_usage(
 
     for event in &events {
         let row = sqlx::query_scalar::<_, serde_json::Value>(
-            r#"INSERT INTO usage_records (id, subscription_id, metric, quantity, recorded_at, metadata)
-               VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamptz, now()), $5)
-               RETURNING to_jsonb(usage_records)"#,
+            r#"INSERT INTO usage_events (id, subscription_id, metric_name, value, timestamp, idempotency_key, properties)
+               VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamp, now()), $5, $6)
+               RETURNING to_jsonb(usage_events)"#,
         )
         .bind(event["subscriptionId"].as_str())
-        .bind(event["metric"].as_str())
-        .bind(event["quantity"].as_i64().unwrap_or(1))
-        .bind(event["recordedAt"].as_str())
-        .bind(event.get("metadata").unwrap_or(&serde_json::json!({})))
+        .bind(event["metricName"].as_str())
+        .bind(event["value"].as_f64().unwrap_or(1.0))
+        .bind(event["timestamp"].as_str())
+        .bind(event["idempotencyKey"].as_str())
+        .bind(event.get("properties").unwrap_or(&serde_json::json!({})))
         .fetch_one(&state.db)
         .await
         .map_err(rustbill_core::error::BillingError::from)?;

@@ -94,17 +94,26 @@ async fn handle_webhook(
     let event_type = event["type"].as_str().unwrap_or("unknown");
     tracing::info!(event_type, "Processing Stripe event");
 
-    // Record the event
-    sqlx::query(
-        r#"INSERT INTO billing_events (id, event_type, provider, entity_id, payload, created_at)
-           VALUES (gen_random_uuid()::text, $1, 'stripe', $2, $3, now())"#,
-    )
-    .bind(event_type)
-    .bind(event["data"]["object"]["id"].as_str())
-    .bind(&event)
-    .execute(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    // Record the event (best-effort: event_type is an enum, so unknown types will be skipped)
+    let mapped_event_type = match event_type {
+        "invoice.paid" => Some("invoice.paid"),
+        "invoice.payment_failed" => Some("invoice.overdue"),
+        "checkout.session.completed" => Some("payment.received"),
+        "charge.refunded" => Some("payment.refunded"),
+        "customer.subscription.deleted" => Some("subscription.canceled"),
+        _ => None,
+    };
+    if let Some(mapped) = mapped_event_type {
+        let _ = sqlx::query(
+            r#"INSERT INTO billing_events (id, event_type, resource_type, resource_id, data, created_at)
+               VALUES (gen_random_uuid()::text, $1::billing_event_type, 'stripe', COALESCE($2, ''), $3, now())"#,
+        )
+        .bind(mapped)
+        .bind(event["data"]["object"]["id"].as_str())
+        .bind(&event)
+        .execute(&state.db)
+        .await;
+    }
 
     // Dispatch to appropriate handler based on event_type
     let obj = &event["data"]["object"];

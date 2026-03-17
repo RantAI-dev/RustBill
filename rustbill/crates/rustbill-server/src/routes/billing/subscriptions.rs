@@ -65,12 +65,13 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', $3, now(), now())
+        r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, quantity, metadata, cancel_at_period_end, version, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', COALESCE($3, 1), $4, false, 1, now(), now())
            RETURNING to_jsonb(subscriptions)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["planId"].as_str())
+    .bind(body["quantity"].as_i64().map(|v| v as i32))
     .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
     .fetch_one(&state.db)
     .await
@@ -115,7 +116,7 @@ async fn remove(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let result = sqlx::query(
-        "UPDATE subscriptions SET status = 'cancelled', updated_at = now() WHERE id = $1",
+        "UPDATE subscriptions SET status = 'canceled', updated_at = now() WHERE id = $1",
     )
     .bind(&id)
     .execute(&state.db)

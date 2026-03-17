@@ -17,7 +17,7 @@ pub fn router() -> Router<SharedState> {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListParams {
-    r#type: Option<String>,
+    product_type: Option<String>,
     deal_type: Option<String>,
 }
 
@@ -28,11 +28,11 @@ async fn list(
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT to_jsonb(d) FROM deals d
-           WHERE ($1::text IS NULL OR d.type = $1)
-             AND ($2::text IS NULL OR d.deal_type = $2)
+           WHERE ($1::text IS NULL OR d.product_type::text = $1)
+             AND ($2::text IS NULL OR d.deal_type::text = $2)
            ORDER BY d.created_at DESC"#,
     )
-    .bind(&params.r#type)
+    .bind(&params.product_type)
     .bind(&params.deal_type)
     .fetch_all(&state.db)
     .await
@@ -67,16 +67,24 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO deals (id, name, type, deal_type, product_id, customer_id, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, now(), now())
+        r#"INSERT INTO deals (id, customer_id, company, contact, email, value, product_id, product_name, product_type, deal_type, date, license_key, notes, usage_metric_label, usage_metric_value, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, COALESCE($8, 'licensed'), COALESCE($9, 'sale'), COALESCE($10, to_char(now(), 'YYYY-MM-DD')), $11, $12, $13, $14, now(), now())
            RETURNING to_jsonb(deals)"#,
     )
-    .bind(body["name"].as_str())
-    .bind(body["type"].as_str())
-    .bind(body["dealType"].as_str())
-    .bind(body["productId"].as_str())
     .bind(body["customerId"].as_str())
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(body["company"].as_str().unwrap_or(""))
+    .bind(body["contact"].as_str().unwrap_or(""))
+    .bind(body["email"].as_str().unwrap_or(""))
+    .bind(body["value"].as_f64().unwrap_or(0.0))
+    .bind(body["productId"].as_str())
+    .bind(body["productName"].as_str().unwrap_or(""))
+    .bind(body["productType"].as_str())
+    .bind(body["dealType"].as_str())
+    .bind(body["date"].as_str())
+    .bind(body["licenseKey"].as_str())
+    .bind(body["notes"].as_str())
+    .bind(body["usageMetricLabel"].as_str())
+    .bind(body["usageMetricValue"].as_i64().map(|v| v as i32))
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -92,19 +100,31 @@ async fn update(
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE deals SET
-             name = COALESCE($2, name),
-             type = COALESCE($3, type),
-             deal_type = COALESCE($4, deal_type),
-             metadata = COALESCE($5, metadata),
+             customer_id = COALESCE($2, customer_id),
+             company = COALESCE($3, company),
+             contact = COALESCE($4, contact),
+             email = COALESCE($5, email),
+             value = COALESCE($6, value),
+             product_id = COALESCE($7, product_id),
+             product_name = COALESCE($8, product_name),
+             product_type = COALESCE($9, product_type),
+             deal_type = COALESCE($10, deal_type),
+             notes = COALESCE($11, notes),
              updated_at = now()
            WHERE id = $1
            RETURNING to_jsonb(deals)"#,
     )
     .bind(&id)
-    .bind(body["name"].as_str())
-    .bind(body["type"].as_str())
+    .bind(body["customerId"].as_str())
+    .bind(body["company"].as_str())
+    .bind(body["contact"].as_str())
+    .bind(body["email"].as_str())
+    .bind(body["value"].as_f64())
+    .bind(body["productId"].as_str())
+    .bind(body["productName"].as_str())
+    .bind(body["productType"].as_str())
     .bind(body["dealType"].as_str())
-    .bind(body.get("metadata"))
+    .bind(body["notes"].as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?

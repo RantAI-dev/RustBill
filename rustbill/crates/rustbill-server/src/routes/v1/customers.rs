@@ -47,21 +47,28 @@ async fn create(
     State(state): State<SharedState>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
-    let name = body["name"].as_str().unwrap_or_default();
-    let email = body["email"].as_str().unwrap_or_default();
-    let metadata = body
-        .get("metadata")
-        .cloned()
-        .unwrap_or(serde_json::json!({}));
-
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO customers (id, name, email, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, now(), now())
+        r#"INSERT INTO customers (id, name, industry, tier, location, contact, email, phone, total_revenue, health_score, trend, last_contact, billing_email, billing_address, billing_city, billing_state, billing_zip, billing_country, tax_id, default_payment_method, stripe_customer_id, xendit_customer_id, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, 50, 'stable', '', $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now(), now())
            RETURNING to_jsonb(customers)"#,
     )
-    .bind(name)
-    .bind(email)
-    .bind(&metadata)
+    .bind(body["name"].as_str().unwrap_or(""))
+    .bind(body["industry"].as_str().unwrap_or(""))
+    .bind(body["tier"].as_str().unwrap_or("standard"))
+    .bind(body["location"].as_str().unwrap_or(""))
+    .bind(body["contact"].as_str().unwrap_or(""))
+    .bind(body["email"].as_str().unwrap_or(""))
+    .bind(body["phone"].as_str().unwrap_or(""))
+    .bind(body["billingEmail"].as_str())
+    .bind(body["billingAddress"].as_str())
+    .bind(body["billingCity"].as_str())
+    .bind(body["billingState"].as_str())
+    .bind(body["billingZip"].as_str())
+    .bind(body["billingCountry"].as_str())
+    .bind(body["taxId"].as_str())
+    .bind(body["defaultPaymentMethod"].as_str())
+    .bind(body["stripeCustomerId"].as_str())
+    .bind(body["xenditCustomerId"].as_str())
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -74,23 +81,47 @@ async fn update(
     Path(id): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let name = body["name"].as_str();
-    let email = body["email"].as_str();
-    let metadata = body.get("metadata");
-
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE customers SET
              name = COALESCE($2, name),
-             email = COALESCE($3, email),
-             metadata = COALESCE($4, metadata),
+             industry = COALESCE($3, industry),
+             tier = COALESCE($4, tier),
+             location = COALESCE($5, location),
+             contact = COALESCE($6, contact),
+             email = COALESCE($7, email),
+             phone = COALESCE($8, phone),
+             billing_email = COALESCE($9, billing_email),
+             billing_address = COALESCE($10, billing_address),
+             billing_city = COALESCE($11, billing_city),
+             billing_state = COALESCE($12, billing_state),
+             billing_zip = COALESCE($13, billing_zip),
+             billing_country = COALESCE($14, billing_country),
+             tax_id = COALESCE($15, tax_id),
+             default_payment_method = COALESCE($16, default_payment_method),
+             stripe_customer_id = COALESCE($17, stripe_customer_id),
+             xendit_customer_id = COALESCE($18, xendit_customer_id),
              updated_at = now()
            WHERE id = $1
            RETURNING to_jsonb(customers)"#,
     )
     .bind(&id)
-    .bind(name)
-    .bind(email)
-    .bind(metadata)
+    .bind(body["name"].as_str())
+    .bind(body["industry"].as_str())
+    .bind(body["tier"].as_str())
+    .bind(body["location"].as_str())
+    .bind(body["contact"].as_str())
+    .bind(body["email"].as_str())
+    .bind(body["phone"].as_str())
+    .bind(body["billingEmail"].as_str())
+    .bind(body["billingAddress"].as_str())
+    .bind(body["billingCity"].as_str())
+    .bind(body["billingState"].as_str())
+    .bind(body["billingZip"].as_str())
+    .bind(body["billingCountry"].as_str())
+    .bind(body["taxId"].as_str())
+    .bind(body["defaultPaymentMethod"].as_str())
+    .bind(body["stripeCustomerId"].as_str())
+    .bind(body["xenditCustomerId"].as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?

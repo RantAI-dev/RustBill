@@ -19,7 +19,7 @@ pub fn router() -> Router<SharedState> {
 #[serde(rename_all = "camelCase")]
 struct ListParams {
     subscription_id: Option<String>,
-    metric: Option<String>,
+    metric_name: Option<String>,
 }
 
 async fn list(
@@ -34,15 +34,15 @@ async fn list(
     };
 
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"SELECT to_jsonb(u) FROM usage_records u
+        r#"SELECT to_jsonb(u) FROM usage_events u
            JOIN subscriptions s ON s.id = u.subscription_id
            WHERE ($1::text IS NULL OR u.subscription_id = $1)
-             AND ($2::text IS NULL OR u.metric = $2)
+             AND ($2::text IS NULL OR u.metric_name = $2)
              AND ($3::text IS NULL OR s.customer_id = $3)
-           ORDER BY u.recorded_at DESC"#,
+           ORDER BY u.timestamp DESC"#,
     )
     .bind(&params.subscription_id)
-    .bind(&params.metric)
+    .bind(&params.metric_name)
     .bind(&role_customer_id)
     .fetch_all(&state.db)
     .await
@@ -57,15 +57,16 @@ async fn record(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO usage_records (id, subscription_id, metric, quantity, recorded_at, metadata)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamptz, now()), $5)
-           RETURNING to_jsonb(usage_records)"#,
+        r#"INSERT INTO usage_events (id, subscription_id, metric_name, value, timestamp, idempotency_key, properties)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamp, now()), $5, $6)
+           RETURNING to_jsonb(usage_events)"#,
     )
     .bind(body["subscriptionId"].as_str())
-    .bind(body["metric"].as_str())
-    .bind(body["quantity"].as_i64().unwrap_or(1))
-    .bind(body["recordedAt"].as_str())
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(body["metricName"].as_str())
+    .bind(body["value"].as_f64().unwrap_or(1.0))
+    .bind(body["timestamp"].as_str())
+    .bind(body["idempotencyKey"].as_str())
+    .bind(body.get("properties").unwrap_or(&serde_json::json!({})))
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -80,13 +81,13 @@ async fn summary(
 ) -> ApiResult<Json<serde_json::Value>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT jsonb_build_object(
-             'metric', u.metric,
-             'totalQuantity', SUM(u.quantity),
+             'metricName', u.metric_name,
+             'totalValue', SUM(u.value),
              'recordCount', COUNT(*)
            )
-           FROM usage_records u
+           FROM usage_events u
            WHERE u.subscription_id = $1
-           GROUP BY u.metric"#,
+           GROUP BY u.metric_name"#,
     )
     .bind(&subscription_id)
     .fetch_all(&state.db)

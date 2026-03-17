@@ -30,20 +30,19 @@ async fn overview(
             .await
             .map_err(rustbill_core::error::BillingError::from)?;
 
-    let mrr: (Option<i64>,) = sqlx::query_as(
-        r#"SELECT SUM(bp.amount) FROM subscriptions s
-           JOIN billing_plans bp ON bp.id = s.plan_id
-           WHERE s.status = 'active'"#,
+    let mrr: (Option<Decimal>,) = sqlx::query_as(
+        r#"SELECT SUM(pp.base_price) FROM subscriptions s
+           JOIN pricing_plans pp ON pp.id = s.plan_id
+           WHERE s.status = 'active' AND s.deleted_at IS NULL"#,
     )
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
 
-    let total_revenue: (Option<i64>,) =
-        sqlx::query_as("SELECT SUM(amount) FROM payments WHERE status = 'succeeded'")
-            .fetch_one(&state.db)
-            .await
-            .map_err(rustbill_core::error::BillingError::from)?;
+    let total_revenue: (Option<Decimal>,) = sqlx::query_as("SELECT SUM(amount) FROM payments")
+        .fetch_one(&state.db)
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?;
 
     let active_licenses: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM licenses WHERE status = 'active'")
@@ -54,8 +53,8 @@ async fn overview(
     Ok(Json(serde_json::json!({
         "totalCustomers": total_customers.0,
         "activeSubscriptions": active_subscriptions.0,
-        "mrr": mrr.0.unwrap_or(0),
-        "totalRevenue": total_revenue.0.unwrap_or(0),
+        "mrr": decimal_to_i64(mrr.0.unwrap_or_default()),
+        "totalRevenue": decimal_to_i64(total_revenue.0.unwrap_or_default()),
         "activeLicenses": active_licenses.0,
     })))
 }

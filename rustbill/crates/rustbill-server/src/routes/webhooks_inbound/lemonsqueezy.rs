@@ -68,17 +68,23 @@ async fn handle_webhook(
 
     tracing::info!(event_type, "Processing LemonSqueezy event");
 
-    // Record the event
-    sqlx::query(
-        r#"INSERT INTO billing_events (id, event_type, provider, entity_id, payload, created_at)
-           VALUES (gen_random_uuid()::text, $1, 'lemonsqueezy', $2, $3, now())"#,
-    )
-    .bind(event_type)
-    .bind(event["data"]["id"].as_str())
-    .bind(&event)
-    .execute(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    // Record the event (best-effort: event_type is an enum, so unknown types will be skipped)
+    let mapped_event_type = match event_type {
+        "order_created" => Some("payment.received"),
+        "order_refunded" => Some("payment.refunded"),
+        _ => None,
+    };
+    if let Some(mapped) = mapped_event_type {
+        let _ = sqlx::query(
+            r#"INSERT INTO billing_events (id, event_type, resource_type, resource_id, data, created_at)
+               VALUES (gen_random_uuid()::text, $1::billing_event_type, 'lemonsqueezy', COALESCE($2, ''), $3, now())"#,
+        )
+        .bind(mapped)
+        .bind(event["data"]["id"].as_str())
+        .bind(&event)
+        .execute(&state.db)
+        .await;
+    }
 
     // Dispatch based on event type
     match event_type {

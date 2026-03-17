@@ -27,7 +27,8 @@ async fn list(
 
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT to_jsonb(cn) FROM credit_notes cn
-           WHERE ($1::text IS NULL OR cn.customer_id = $1)
+           WHERE cn.deleted_at IS NULL
+             AND ($1::text IS NULL OR cn.customer_id = $1)
            ORDER BY cn.created_at DESC"#,
     )
     .bind(&role_customer_id)
@@ -44,7 +45,7 @@ async fn get_one(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(cn) FROM credit_notes cn WHERE cn.id = $1",
+        "SELECT to_jsonb(cn) FROM credit_notes cn WHERE cn.id = $1 AND cn.deleted_at IS NULL",
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -64,13 +65,13 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO credit_notes (id, invoice_id, customer_id, amount, reason, status, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'draft', now(), now())
+        r#"INSERT INTO credit_notes (id, credit_note_number, invoice_id, customer_id, amount, reason, status, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, 'CN-' || LPAD((extract(epoch from now()) * 1000)::bigint::text, 14, '0'), $1, $2, $3, $4, 'draft', now(), now())
            RETURNING to_jsonb(credit_notes)"#,
     )
     .bind(body["invoiceId"].as_str())
     .bind(body["customerId"].as_str())
-    .bind(body["amount"].as_i64().unwrap_or(0))
+    .bind(body["amount"].as_f64().unwrap_or(0.0))
     .bind(body["reason"].as_str())
     .fetch_one(&state.db)
     .await
@@ -110,7 +111,7 @@ async fn remove(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let result = sqlx::query("DELETE FROM credit_notes WHERE id = $1")
+    let result = sqlx::query("UPDATE credit_notes SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL")
         .bind(&id)
         .execute(&state.db)
         .await

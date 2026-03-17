@@ -65,17 +65,19 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO payments (id, invoice_id, customer_id, provider, provider_payment_id, amount, currency, status, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, 'pending', $7, now(), now())
+        r#"INSERT INTO payments (id, invoice_id, amount, method, reference, paid_at, notes, stripe_payment_intent_id, xendit_payment_id, lemonsqueezy_order_id, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, COALESCE($3, 'manual'), $4, COALESCE($5::timestamp, now()), $6, $7, $8, $9, now())
            RETURNING to_jsonb(payments)"#,
     )
     .bind(body["invoiceId"].as_str())
-    .bind(body["customerId"].as_str())
-    .bind(body["provider"].as_str())
-    .bind(body["providerPaymentId"].as_str())
-    .bind(body["amount"].as_i64().unwrap_or(0))
-    .bind(body["currency"].as_str().unwrap_or("USD"))
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(body["amount"].as_f64().unwrap_or(0.0))
+    .bind(body["method"].as_str())
+    .bind(body["reference"].as_str())
+    .bind(body["paidAt"].as_str())
+    .bind(body["notes"].as_str())
+    .bind(body["stripePaymentIntentId"].as_str())
+    .bind(body["xenditPaymentId"].as_str())
+    .bind(body["lemonsqueezyOrderId"].as_str())
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -91,15 +93,14 @@ async fn update(
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE payments SET
-             status = COALESCE($2, status),
-             metadata = COALESCE($3, metadata),
-             updated_at = now()
+             reference = COALESCE($2, reference),
+             notes = COALESCE($3, notes)
            WHERE id = $1
            RETURNING to_jsonb(payments)"#,
     )
     .bind(&id)
-    .bind(body["status"].as_str())
-    .bind(body.get("metadata"))
+    .bind(body["reference"].as_str())
+    .bind(body["notes"].as_str())
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?

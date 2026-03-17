@@ -19,7 +19,7 @@ async fn list(
     _user: AdminUser,
 ) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(c) FROM coupons c ORDER BY c.created_at DESC",
+        "SELECT to_jsonb(c) FROM coupons c WHERE c.deleted_at IS NULL ORDER BY c.created_at DESC",
     )
     .fetch_all(&state.db)
     .await
@@ -34,7 +34,7 @@ async fn get_one(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        "SELECT to_jsonb(c) FROM coupons c WHERE c.id = $1",
+        "SELECT to_jsonb(c) FROM coupons c WHERE c.id = $1 AND c.deleted_at IS NULL",
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -54,16 +54,20 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO coupons (id, code, discount_type, discount_value, max_redemptions, expires_at, metadata, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, now(), now())
+        r#"INSERT INTO coupons (id, code, name, discount_type, discount_value, currency, max_redemptions, times_redeemed, valid_from, valid_until, active, applies_to, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, COALESCE($5, 'USD'), $6, 0, COALESCE($7::timestamp, now()), $8::timestamp, COALESCE($9, true), $10, now(), now())
            RETURNING to_jsonb(coupons)"#,
     )
     .bind(body["code"].as_str())
+    .bind(body["name"].as_str().unwrap_or_else(|| body["code"].as_str().unwrap_or("Untitled")))
     .bind(body["discountType"].as_str())
-    .bind(body["discountValue"].as_i64().unwrap_or(0))
+    .bind(body["discountValue"].as_f64().unwrap_or(0.0))
+    .bind(body["currency"].as_str())
     .bind(body["maxRedemptions"].as_i64().map(|v| v as i32))
-    .bind(body["expiresAt"].as_str())
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(body["validFrom"].as_str())
+    .bind(body["validUntil"].as_str())
+    .bind(body["active"].as_bool())
+    .bind(body.get("appliesTo"))
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -80,20 +84,28 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE coupons SET
              code = COALESCE($2, code),
-             discount_type = COALESCE($3, discount_type),
-             discount_value = COALESCE($4, discount_value),
-             max_redemptions = COALESCE($5, max_redemptions),
-             metadata = COALESCE($6, metadata),
+             name = COALESCE($3, name),
+             discount_type = COALESCE($4, discount_type),
+             discount_value = COALESCE($5, discount_value),
+             currency = COALESCE($6, currency),
+             max_redemptions = COALESCE($7, max_redemptions),
+             valid_until = COALESCE($8::timestamp, valid_until),
+             active = COALESCE($9, active),
+             applies_to = COALESCE($10, applies_to),
              updated_at = now()
-           WHERE id = $1
+           WHERE id = $1 AND deleted_at IS NULL
            RETURNING to_jsonb(coupons)"#,
     )
     .bind(&id)
     .bind(body["code"].as_str())
+    .bind(body["name"].as_str())
     .bind(body["discountType"].as_str())
-    .bind(body["discountValue"].as_i64())
+    .bind(body["discountValue"].as_f64())
+    .bind(body["currency"].as_str())
     .bind(body["maxRedemptions"].as_i64().map(|v| v as i32))
-    .bind(body.get("metadata"))
+    .bind(body["validUntil"].as_str())
+    .bind(body["active"].as_bool())
+    .bind(body.get("appliesTo"))
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?
@@ -110,7 +122,7 @@ async fn remove(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let result = sqlx::query("DELETE FROM coupons WHERE id = $1")
+    let result = sqlx::query("UPDATE coupons SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL")
         .bind(&id)
         .execute(&state.db)
         .await
