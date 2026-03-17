@@ -38,7 +38,7 @@ export interface License {
 export function getStatusColor(status: LicenseStatus): string {
   switch (status) {
     case "active":
-      return "bg-emerald-500/10 text-emerald-500";
+      return "bg-sky-500/10 text-sky-500";
     case "expired":
       return "bg-amber-500/10 text-amber-500";
     case "revoked":

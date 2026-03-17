@@ -1,5 +1,5 @@
 {
-  "name": "rantai-billing",
+  "name": "rustbill",
   "version": "0.1.0",
   "private": true,
   "scripts": {

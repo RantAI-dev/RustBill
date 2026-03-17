@@ -59,7 +59,7 @@ async fn record(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO usage_events (id, subscription_id, metric_name, value, timestamp, idempotency_key, properties)
            VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamp, now()), $5, $6)
-           RETURNING to_jsonb(usage_events)"#,
+           RETURNING to_jsonb(usage_events.*)"#,
     )
     .bind(body["subscriptionId"].as_str())
     .bind(body["metricName"].as_str())

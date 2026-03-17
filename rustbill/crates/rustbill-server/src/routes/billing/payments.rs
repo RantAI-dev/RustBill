@@ -66,8 +66,8 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO payments (id, invoice_id, amount, method, reference, paid_at, notes, stripe_payment_intent_id, xendit_payment_id, lemonsqueezy_order_id, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, COALESCE($3, 'manual'), $4, COALESCE($5::timestamp, now()), $6, $7, $8, $9, now())
-           RETURNING to_jsonb(payments)"#,
+           VALUES (gen_random_uuid()::text, $1, $2, COALESCE($3::payment_method, 'manual'), $4, COALESCE($5::timestamp, now()), $6, $7, $8, $9, now())
+           RETURNING to_jsonb(payments.*)"#,
     )
     .bind(body["invoiceId"].as_str())
     .bind(body["amount"].as_f64().unwrap_or(0.0))
@@ -96,7 +96,7 @@ async fn update(
              reference = COALESCE($2, reference),
              notes = COALESCE($3, notes)
            WHERE id = $1
-           RETURNING to_jsonb(payments)"#,
+           RETURNING to_jsonb(payments.*)"#,
     )
     .bind(&id)
     .bind(body["reference"].as_str())

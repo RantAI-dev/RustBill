@@ -56,7 +56,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO coupons (id, code, name, discount_type, discount_value, currency, max_redemptions, times_redeemed, valid_from, valid_until, active, applies_to, created_at, updated_at)
            VALUES (gen_random_uuid()::text, $1, $2, $3::discount_type, $4::numeric, COALESCE($5, 'USD'), $6, 0, COALESCE($7::timestamp, now()), $8::timestamp, COALESCE($9, true), $10::jsonb, now(), now())
-           RETURNING to_jsonb(coupons)"#,
+           RETURNING to_jsonb(coupons.*)"#,
     )
     .bind(body["code"].as_str())
     .bind(body["name"].as_str().unwrap_or_else(|| body["code"].as_str().unwrap_or("Untitled")))
@@ -94,7 +94,7 @@ async fn update(
              applies_to = COALESCE($10::jsonb, applies_to),
              updated_at = now()
            WHERE id = $1 AND deleted_at IS NULL
-           RETURNING to_jsonb(coupons)"#,
+           RETURNING to_jsonb(coupons.*)"#,
     )
     .bind(&id)
     .bind(body["code"].as_str())

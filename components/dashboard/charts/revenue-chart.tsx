@@ -37,6 +37,20 @@ export function RevenueChart({ data, isLoading }: RevenueChartProps) {
     );
   }
 
+  if (data.length === 0) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5 h-[380px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Revenue Trend</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">Monthly performance vs target</p>
+        </div>
+        <div className="h-[280px] flex items-center justify-center">
+          <p className="text-sm text-muted-foreground">No revenue data yet</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-card border border-border rounded-xl p-5 h-[380px] animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between mb-6">
@@ -65,8 +79,8 @@ export function RevenueChart({ data, isLoading }: RevenueChartProps) {
                 <stop offset="100%" stopColor="oklch(0.7 0.18 220)" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="targetGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="oklch(0.7 0.18 145)" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="oklch(0.7 0.18 145)" stopOpacity={0} />
+                <stop offset="0%" stopColor="oklch(0.75 0.130 243)" stopOpacity={0.3} />
+                <stop offset="100%" stopColor="oklch(0.75 0.130 243)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.22 0.005 260)" vertical={false} />
@@ -98,7 +112,7 @@ export function RevenueChart({ data, isLoading }: RevenueChartProps) {
             <Area
               type="monotone"
               dataKey="target"
-              stroke="oklch(0.7 0.18 145)"
+              stroke="oklch(0.75 0.130 243)"
               strokeWidth={2}
               fill="url(#targetGradient)"
               dot={false}

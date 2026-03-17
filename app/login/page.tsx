@@ -159,15 +159,15 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2">
+          <div className="inline-flex items-center justify-center mb-2">
             <Image
-              src={appConfig.logo}
-              alt={appConfig.shortName}
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-lg object-contain"
+              src={appConfig.logoFull}
+              alt={appConfig.name}
+              width={280}
+              height={80}
+              className="h-16 w-auto object-contain"
+              priority
             />
-            <span className="text-xl font-semibold text-foreground">{appConfig.name}</span>
           </div>
           <p className="text-sm text-muted-foreground">Sign in to your dashboard</p>
         </div>

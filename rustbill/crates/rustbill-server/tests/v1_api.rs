@@ -189,9 +189,9 @@ async fn v1_usage_batch_post(pool: PgPool) {
 
     // Send a batch of 3 usage events
     let batch_body = serde_json::json!([
-        { "subscriptionId": sub_id, "metric": "api_calls", "quantity": 100 },
-        { "subscriptionId": sub_id, "metric": "api_calls", "quantity": 200 },
-        { "subscriptionId": sub_id, "metric": "storage_mb", "quantity": 50 },
+        { "subscriptionId": sub_id, "metricName": "api_calls", "value": 100 },
+        { "subscriptionId": sub_id, "metricName": "api_calls", "value": 200 },
+        { "subscriptionId": sub_id, "metricName": "storage_mb", "value": 50 },
     ]);
 
     let resp = server

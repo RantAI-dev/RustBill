@@ -43,7 +43,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
            VALUES (gen_random_uuid()::text, $1, $2, $3, now())
-           RETURNING to_jsonb(api_keys) - 'key_hash'"#,
+           RETURNING to_jsonb(api_keys.*) - 'key_hash'"#,
     )
     .bind(name)
     .bind(&key_plain[..12])

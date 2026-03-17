@@ -256,7 +256,7 @@ export function CustomersSection() {
                         style={{
                           width: `${customer.healthScore}%`,
                           backgroundColor:
-                            customer.healthScore >= 80 ? "oklch(0.7 0.18 145)" : customer.healthScore >= 60 ? "oklch(0.75 0.18 55)" : "oklch(0.65 0.2 25)",
+                            customer.healthScore >= 80 ? "oklch(0.75 0.130 243)" : customer.healthScore >= 60 ? "oklch(0.75 0.18 55)" : "oklch(0.65 0.2 25)",
                         }}
                       />
                     </div>

@@ -21,7 +21,7 @@ import {
 const invoiceStatusColors: Record<string, string> = {
   draft: "bg-muted-foreground/20 text-muted-foreground",
   issued: "bg-blue-500/20 text-blue-400",
-  paid: "bg-emerald-500/20 text-emerald-400",
+  paid: "bg-sky-500/20 text-sky-400",
   overdue: "bg-red-500/20 text-red-400",
   void: "bg-zinc-500/20 text-zinc-400",
 };

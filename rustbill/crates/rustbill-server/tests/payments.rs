@@ -37,30 +37,28 @@ async fn list_payments_empty(pool: PgPool) {
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn create_payment(pool: PgPool) {
-    let (server, token, customer_id, invoice_id) = setup(pool).await;
+    let (server, token, _customer_id, invoice_id) = setup(pool).await;
 
     let resp = server
         .post("/api/billing/payments")
         .add_cookie(cookie::Cookie::new("session", token))
         .json(&json!({
             "invoiceId": invoice_id,
-            "customerId": customer_id,
-            "provider": "stripe",
-            "providerPaymentId": "pi_test_123",
+            "method": "stripe",
             "amount": 5500,
-            "currency": "USD"
+            "stripePaymentIntentId": "pi_test_123"
         }))
         .await;
 
     resp.assert_status(axum::http::StatusCode::CREATED);
     let body: serde_json::Value = resp.json();
     assert_eq!(body["invoice_id"].as_str().unwrap(), invoice_id);
-    assert_eq!(body["status"].as_str().unwrap(), "pending");
+    assert_eq!(body["method"].as_str().unwrap(), "stripe");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn update_payment_marks_completed(pool: PgPool) {
-    let (server, token, customer_id, invoice_id) = setup(pool).await;
+    let (server, token, _customer_id, invoice_id) = setup(pool).await;
 
     // Create payment
     let resp = server
@@ -68,11 +66,9 @@ async fn update_payment_marks_completed(pool: PgPool) {
         .add_cookie(cookie::Cookie::new("session", token.clone()))
         .json(&json!({
             "invoiceId": invoice_id,
-            "customerId": customer_id,
-            "provider": "stripe",
-            "providerPaymentId": "pi_test_456",
+            "method": "stripe",
             "amount": 5500,
-            "currency": "USD"
+            "stripePaymentIntentId": "pi_test_456"
         }))
         .await;
 
@@ -80,21 +76,21 @@ async fn update_payment_marks_completed(pool: PgPool) {
     let payment: serde_json::Value = resp.json();
     let payment_id = payment["id"].as_str().unwrap();
 
-    // Update status to completed
+    // Update payment notes
     let resp = server
         .put(&format!("/api/billing/payments/{payment_id}"))
         .add_cookie(cookie::Cookie::new("session", token))
-        .json(&json!({ "status": "completed" }))
+        .json(&json!({ "notes": "Payment completed" }))
         .await;
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["status"].as_str().unwrap(), "completed");
+    assert_eq!(body["notes"].as_str().unwrap(), "Payment completed");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn list_payments_returns_created(pool: PgPool) {
-    let (server, token, customer_id, invoice_id) = setup(pool).await;
+    let (server, token, _customer_id, invoice_id) = setup(pool).await;
 
     // Create a payment first
     let resp = server
@@ -102,11 +98,9 @@ async fn list_payments_returns_created(pool: PgPool) {
         .add_cookie(cookie::Cookie::new("session", token.clone()))
         .json(&json!({
             "invoiceId": invoice_id,
-            "customerId": customer_id,
-            "provider": "stripe",
-            "providerPaymentId": "pi_test_789",
+            "method": "stripe",
             "amount": 2000,
-            "currency": "USD"
+            "stripePaymentIntentId": "pi_test_789"
         }))
         .await;
 

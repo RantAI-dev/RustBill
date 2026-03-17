@@ -65,8 +65,8 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO dunning_log (id, invoice_id, subscription_id, step, scheduled_at, executed_at, notes, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamp, now()), $5::timestamp, $6, now())
-           RETURNING to_jsonb(dunning_log)"#,
+           VALUES (gen_random_uuid()::text, $1, $2, $3::dunning_step, COALESCE($4::timestamp, now()), $5::timestamp, $6, now())
+           RETURNING to_jsonb(dunning_log.*)"#,
     )
     .bind(body["invoiceId"].as_str())
     .bind(body["subscriptionId"].as_str())

@@ -159,7 +159,7 @@ async fn create_subscription(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, quantity, metadata, cancel_at_period_end, version, created_at, updated_at)
            VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', COALESCE($3, 1), $4, false, 1, now(), now())
-           RETURNING to_jsonb(subscriptions)"#,
+           RETURNING to_jsonb(subscriptions.*)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["planId"].as_str())
@@ -180,11 +180,11 @@ async fn update_subscription(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE subscriptions SET
              plan_id = COALESCE($2, plan_id),
-             status = COALESCE($3, status),
+             status = COALESCE($3::subscription_status, status),
              metadata = COALESCE($4, metadata),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(subscriptions)"#,
+           RETURNING to_jsonb(subscriptions.*)"#,
     )
     .bind(&id)
     .bind(body["planId"].as_str())
@@ -252,7 +252,7 @@ async fn record_usage(
         let row = sqlx::query_scalar::<_, serde_json::Value>(
             r#"INSERT INTO usage_events (id, subscription_id, metric_name, value, timestamp, idempotency_key, properties)
                VALUES (gen_random_uuid()::text, $1, $2, $3, COALESCE($4::timestamp, now()), $5, $6)
-               RETURNING to_jsonb(usage_events)"#,
+               RETURNING to_jsonb(usage_events.*)"#,
         )
         .bind(event["subscriptionId"].as_str())
         .bind(event["metricName"].as_str())

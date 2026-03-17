@@ -10,10 +10,15 @@ use axum::{
     Json, Router,
 };
 
+/// Public routes — no session required
+pub fn public_router() -> Router<SharedState> {
+    Router::new().route("/verify", post(verify))
+}
+
+/// Admin routes — session required (applied by caller)
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", get(list).post(create))
-        .route("/verify", post(verify))
         .route("/keypair", get(get_keypair).post(create_keypair))
         .route("/{key}", put(update).delete(remove))
         .route("/{key}/sign", post(sign))
@@ -60,7 +65,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO licenses (key, customer_id, customer_name, product_id, product_name, status, created_at, expires_at, license_type, features, max_activations)
            VALUES ($1, $2, COALESCE($3, ''), $4, COALESCE($5, ''), 'active', to_char(now(), 'YYYY-MM-DD'), COALESCE($6, ''), COALESCE($7, 'simple'), $8, $9)
-           RETURNING to_jsonb(licenses)"#,
+           RETURNING to_jsonb(licenses.*)"#,
     )
     .bind(&key)
     .bind(body["customerId"].as_str())
@@ -86,7 +91,7 @@ async fn update(
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE licenses SET
-             status = COALESCE($2, status),
+             status = COALESCE($2::license_status, status),
              customer_name = COALESCE($3, customer_name),
              product_name = COALESCE($4, product_name),
              max_activations = COALESCE($5, max_activations),
@@ -94,7 +99,7 @@ async fn update(
              license_type = COALESCE($7, license_type),
              features = COALESCE($8, features)
            WHERE key = $1
-           RETURNING to_jsonb(licenses)"#,
+           RETURNING to_jsonb(licenses.*)"#,
     )
     .bind(&key)
     .bind(body["status"].as_str())

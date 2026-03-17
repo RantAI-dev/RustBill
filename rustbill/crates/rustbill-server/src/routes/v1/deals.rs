@@ -64,8 +64,8 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO deals (id, customer_id, company, contact, email, value, product_id, product_name, product_type, deal_type, date, license_key, notes, usage_metric_label, usage_metric_value, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, COALESCE($8, 'licensed'), COALESCE($9, 'sale'), COALESCE($10, to_char(now(), 'YYYY-MM-DD')), $11, $12, $13, $14, now(), now())
-           RETURNING to_jsonb(deals)"#,
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, COALESCE($8::product_type, 'licensed'), COALESCE($9::deal_type, 'sale'), COALESCE($10, to_char(now(), 'YYYY-MM-DD')), $11, $12, $13, $14, now(), now())
+           RETURNING to_jsonb(deals.*)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["company"].as_str().unwrap_or(""))
@@ -102,12 +102,12 @@ async fn update(
              value = COALESCE($6, value),
              product_id = COALESCE($7, product_id),
              product_name = COALESCE($8, product_name),
-             product_type = COALESCE($9, product_type),
-             deal_type = COALESCE($10, deal_type),
+             product_type = COALESCE($9::product_type, product_type),
+             deal_type = COALESCE($10::deal_type, deal_type),
              notes = COALESCE($11, notes),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(deals)"#,
+           RETURNING to_jsonb(deals.*)"#,
     )
     .bind(&id)
     .bind(body["customerId"].as_str())

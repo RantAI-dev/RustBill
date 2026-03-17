@@ -55,8 +55,8 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO pricing_plans (id, product_id, name, pricing_model, billing_cycle, base_price, unit_price, tiers, usage_metric_name, trial_days, active, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 0), COALESCE($10, true), now(), now())
-           RETURNING to_jsonb(pricing_plans)"#,
+           VALUES (gen_random_uuid()::text, $1, $2, $3::pricing_model, $4::billing_cycle, $5, $6, $7, $8, COALESCE($9, 0), COALESCE($10, true), now(), now())
+           RETURNING to_jsonb(pricing_plans.*)"#,
     )
     .bind(body["productId"].as_str())
     .bind(body["name"].as_str())
@@ -84,8 +84,8 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE pricing_plans SET
              name = COALESCE($2, name),
-             pricing_model = COALESCE($3, pricing_model),
-             billing_cycle = COALESCE($4, billing_cycle),
+             pricing_model = COALESCE($3::pricing_model, pricing_model),
+             billing_cycle = COALESCE($4::billing_cycle, billing_cycle),
              base_price = COALESCE($5, base_price),
              unit_price = COALESCE($6, unit_price),
              tiers = COALESCE($7, tiers),
@@ -94,7 +94,7 @@ async fn update(
              active = COALESCE($10, active),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(pricing_plans)"#,
+           RETURNING to_jsonb(pricing_plans.*)"#,
     )
     .bind(&id)
     .bind(body["name"].as_str())

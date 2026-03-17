@@ -49,8 +49,8 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO customers (id, name, industry, tier, location, contact, email, phone, total_revenue, health_score, trend, last_contact, billing_email, billing_address, billing_city, billing_state, billing_zip, billing_country, tax_id, default_payment_method, stripe_customer_id, xendit_customer_id, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, 50, 'stable', '', $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now(), now())
-           RETURNING to_jsonb(customers)"#,
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, 0, 50, 'stable', '', $8, $9, $10, $11, $12, $13, $14, $15::payment_method, $16, $17, now(), now())
+           RETURNING to_jsonb(customers.*)"#,
     )
     .bind(body["name"].as_str().unwrap_or(""))
     .bind(body["industry"].as_str().unwrap_or(""))
@@ -97,12 +97,12 @@ async fn update(
              billing_zip = COALESCE($13, billing_zip),
              billing_country = COALESCE($14, billing_country),
              tax_id = COALESCE($15, tax_id),
-             default_payment_method = COALESCE($16, default_payment_method),
+             default_payment_method = COALESCE($16::payment_method, default_payment_method),
              stripe_customer_id = COALESCE($17, stripe_customer_id),
              xendit_customer_id = COALESCE($18, xendit_customer_id),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(customers)"#,
+           RETURNING to_jsonb(customers.*)"#,
     )
     .bind(&id)
     .bind(body["name"].as_str())

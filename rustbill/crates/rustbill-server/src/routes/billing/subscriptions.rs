@@ -70,7 +70,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, quantity, metadata, cancel_at_period_end, version, created_at, updated_at)
            VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', COALESCE($3, 1), $4, false, 1, now(), now())
-           RETURNING to_jsonb(subscriptions)"#,
+           RETURNING to_jsonb(subscriptions.*)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["planId"].as_str())
@@ -92,11 +92,11 @@ async fn update(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE subscriptions SET
              plan_id = COALESCE($2, plan_id),
-             status = COALESCE($3, status),
+             status = COALESCE($3::subscription_status, status),
              metadata = COALESCE($4, metadata),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(subscriptions)"#,
+           RETURNING to_jsonb(subscriptions.*)"#,
     )
     .bind(&id)
     .bind(body["planId"].as_str())
@@ -149,7 +149,7 @@ async fn lifecycle(
     let new_status = match action {
         "pause" => "paused",
         "resume" => "active",
-        "cancel" => "cancelled",
+        "cancel" => "canceled",
         "renew" => "active",
         _ => {
             return Err(rustbill_core::error::BillingError::BadRequest(format!(
@@ -160,9 +160,9 @@ async fn lifecycle(
     };
 
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"UPDATE subscriptions SET status = $2, updated_at = now()
+        r#"UPDATE subscriptions SET status = $2::subscription_status, updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(subscriptions)"#,
+           RETURNING to_jsonb(subscriptions.*)"#,
     )
     .bind(subscription_id)
     .bind(new_status)

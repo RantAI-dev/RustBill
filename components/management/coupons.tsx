@@ -27,7 +27,7 @@ function getStatus(coupon: Coupon): "active" | "inactive" | "expired" {
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
-  active: { label: "Active", className: "bg-emerald-500/20 text-emerald-400" },
+  active: { label: "Active", className: "bg-sky-500/20 text-sky-400" },
   inactive: { label: "Inactive", className: "bg-muted-foreground/20 text-muted-foreground" },
   expired: { label: "Expired", className: "bg-red-500/20 text-red-400" },
 };

@@ -32,7 +32,7 @@ async fn list(
 
     let rows = sqlx::query_scalar::<_, serde_json::Value>(
         r#"SELECT to_jsonb(e) FROM billing_events e
-           WHERE ($1::text IS NULL OR e.event_type = $1)
+           WHERE ($1::text IS NULL OR e.event_type = $1::billing_event_type)
              AND ($2::text IS NULL OR e.resource_id = $2)
            ORDER BY e.created_at DESC
            LIMIT $3 OFFSET $4"#,
@@ -47,7 +47,7 @@ async fn list(
 
     let total: (i64,) = sqlx::query_as(
         r#"SELECT COUNT(*) FROM billing_events e
-           WHERE ($1::text IS NULL OR e.event_type = $1)
+           WHERE ($1::text IS NULL OR e.event_type = $1::billing_event_type)
              AND ($2::text IS NULL OR e.resource_id = $2)"#,
     )
     .bind(&params.r#type)

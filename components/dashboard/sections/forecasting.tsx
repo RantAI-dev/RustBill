@@ -201,8 +201,8 @@ export function ForecastingSection() {
               <AreaChart data={forecastData}>
                 <defs>
                   <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="oklch(0.7 0.18 145)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="oklch(0.7 0.18 145)" stopOpacity={0} />
+                    <stop offset="5%" stopColor="oklch(0.75 0.130 243)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="oklch(0.75 0.130 243)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="forecastGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="oklch(0.7 0.18 220)" stopOpacity={0.3} />
@@ -243,7 +243,7 @@ export function ForecastingSection() {
                 <Area
                   type="monotone"
                   dataKey="actual"
-                  stroke="oklch(0.7 0.18 145)"
+                  stroke="oklch(0.75 0.130 243)"
                   fill="url(#actualGradient)"
                   strokeWidth={2}
                   connectNulls={false}
@@ -286,7 +286,7 @@ export function ForecastingSection() {
                       <span style={{ color: "oklch(0.65 0 0)" }}>{value}</span>
                     )}
                   />
-                  <Bar dataKey="committed" name="Committed" fill="oklch(0.7 0.18 145)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="committed" name="Committed" fill="oklch(0.75 0.130 243)" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="bestCase" name="Best Case" fill="oklch(0.7 0.18 220)" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="projected" name="Projected" fill="oklch(0.22 0.005 260)" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -314,7 +314,7 @@ export function ForecastingSection() {
                       style={{
                         backgroundColor:
                           scenario.color === "accent"
-                            ? "oklch(0.7 0.18 145)"
+                            ? "oklch(0.75 0.130 243)"
                             : scenario.color === "chart-1"
                             ? "oklch(0.7 0.18 220)"
                             : "oklch(0.65 0.2 25)",
@@ -338,7 +338,7 @@ export function ForecastingSection() {
                       width: `${scenario.probability}%`,
                       backgroundColor:
                         scenario.color === "accent"
-                          ? "oklch(0.7 0.18 145)"
+                          ? "oklch(0.75 0.130 243)"
                           : scenario.color === "chart-1"
                           ? "oklch(0.7 0.18 220)"
                           : "oklch(0.65 0.2 25)",

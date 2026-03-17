@@ -67,7 +67,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO credit_notes (id, credit_note_number, invoice_id, customer_id, amount, reason, status, created_at, updated_at)
            VALUES (gen_random_uuid()::text, 'CN-' || LPAD((extract(epoch from now()) * 1000)::bigint::text, 14, '0'), $1, $2, $3, $4, 'draft', now(), now())
-           RETURNING to_jsonb(credit_notes)"#,
+           RETURNING to_jsonb(credit_notes.*)"#,
     )
     .bind(body["invoiceId"].as_str())
     .bind(body["customerId"].as_str())
@@ -88,10 +88,10 @@ async fn update(
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE credit_notes SET
-             status = COALESCE($2, status),
+             status = COALESCE($2::credit_note_status, status),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(credit_notes)"#,
+           RETURNING to_jsonb(credit_notes.*)"#,
     )
     .bind(&id)
     .bind(body["status"].as_str())

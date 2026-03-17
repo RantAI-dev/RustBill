@@ -67,7 +67,8 @@ function formatRelativeTime(dateStr: string): string {
 
 export function NotificationCenter() {
   const { data: events } = useBillingEvents(undefined, 10);
-  const eventList = (events ?? []) as {
+  const raw = events?.data ?? events;
+  const eventList = (Array.isArray(raw) ? raw : []) as {
     id: string;
     eventType: string;
     resourceType: string;

@@ -274,7 +274,7 @@ export function ManagePlansSection() {
                 <TableCell>{billingCycleLabels[(plan.billingCycle as string)] ?? plan.billingCycle as string}</TableCell>
                 <TableCell className="text-right font-medium">${(plan.basePrice as number).toLocaleString()}</TableCell>
                 <TableCell>
-                  <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", plan.active ? "bg-emerald-500/20 text-emerald-400" : "bg-muted-foreground/20 text-muted-foreground")}>
+                  <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", plan.active ? "bg-sky-500/20 text-sky-400" : "bg-muted-foreground/20 text-muted-foreground")}>
                     {plan.active ? "Active" : "Inactive"}
                   </span>
                 </TableCell>

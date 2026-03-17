@@ -134,7 +134,7 @@ async fn delete_subscription_cancels(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["status"].as_str().unwrap(), "cancelled");
+    assert_eq!(body["status"].as_str().unwrap(), "canceled");
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -187,7 +187,7 @@ async fn lifecycle_cancel(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["status"].as_str().unwrap(), "cancelled");
+    assert_eq!(body["status"].as_str().unwrap(), "canceled");
 }
 
 #[sqlx::test(migrations = "../../migrations")]

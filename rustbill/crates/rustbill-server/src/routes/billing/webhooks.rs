@@ -57,7 +57,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO webhook_endpoints (id, url, description, events, secret, status, created_at, updated_at)
            VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'active', now(), now())
-           RETURNING to_jsonb(webhook_endpoints)"#,
+           RETURNING to_jsonb(webhook_endpoints.*)"#,
     )
     .bind(body["url"].as_str())
     .bind(body["description"].as_str())
@@ -81,10 +81,10 @@ async fn update(
              url = COALESCE($2, url),
              description = COALESCE($3, description),
              events = COALESCE($4, events),
-             status = COALESCE($5, status),
+             status = COALESCE($5::webhook_status, status),
              updated_at = now()
            WHERE id = $1
-           RETURNING to_jsonb(webhook_endpoints)"#,
+           RETURNING to_jsonb(webhook_endpoints.*)"#,
     )
     .bind(&id)
     .bind(body["url"].as_str())

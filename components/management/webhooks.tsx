@@ -56,7 +56,7 @@ function WebhookDetail({ webhook, onEdit, onDelete }: { webhook: Webhook; onEdit
           <div>
             <p className={labelClass}>Status</p>
             <span className={cn("inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize mt-1",
-              webhook.status === "active" ? "bg-emerald-500/20 text-emerald-400" : "bg-muted-foreground/20 text-muted-foreground"
+              webhook.status === "active" ? "bg-sky-500/20 text-sky-400" : "bg-muted-foreground/20 text-muted-foreground"
             )}>
               {webhook.status as string}
             </span>
@@ -294,7 +294,7 @@ export function ManageWebhooksSection() {
                   </TableCell>
                   <TableCell className="px-4">
                     <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize",
-                      webhook.status === "active" ? "bg-emerald-500/20 text-emerald-400" : "bg-muted-foreground/20 text-muted-foreground"
+                      webhook.status === "active" ? "bg-sky-500/20 text-sky-400" : "bg-muted-foreground/20 text-muted-foreground"
                     )}>
                       {webhook.status as string}
                     </span>

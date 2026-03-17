@@ -37,6 +37,9 @@ pub async fn build_state(config: AppConfig) -> anyhow::Result<SharedState> {
     // Provider settings cache
     let provider_cache = ProviderSettingsCache::new(db.clone());
 
+    // Seed default admin if no admin user exists
+    ensure_default_admin(&db).await?;
+
     Ok(Arc::new(AppState {
         db,
         config: Arc::new(config),
@@ -44,6 +47,30 @@ pub async fn build_state(config: AppConfig) -> anyhow::Result<SharedState> {
         email_sender,
         provider_cache,
     }))
+}
+
+/// Ensure a default admin user exists. Creates one if the users table is empty.
+async fn ensure_default_admin(db: &sqlx::PgPool) -> anyhow::Result<()> {
+    let has_admin = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin')",
+    )
+    .fetch_one(db)
+    .await?;
+
+    if !has_admin {
+        let password_hash = rustbill_core::auth::password::hash_password("admin123")?;
+        sqlx::query(
+            r#"INSERT INTO users (id, email, name, password_hash, role, auth_provider, created_at, updated_at)
+               VALUES (gen_random_uuid()::text, 'admin@rustbill.local', 'Admin', $1, 'admin', 'default', NOW(), NOW())"#,
+        )
+        .bind(&password_hash)
+        .execute(db)
+        .await?;
+
+        tracing::info!("Created default admin user: admin@rustbill.local (password: admin123)");
+    }
+
+    Ok(())
 }
 
 /// Build the Axum router with all routes and middleware.
@@ -67,6 +94,10 @@ pub fn build_router(state: SharedState) -> Router {
 
     // Inbound webhooks — no session, signature verification only
     let webhook_routes = Router::new().nest("/api/billing", routes::webhooks_inbound::router());
+
+    // Public license verification — no session required
+    let public_license_routes = Router::new()
+        .nest("/api/licenses", routes::licenses::public_router());
 
     // Admin API — session required (middleware applied per-group)
     let admin_api = Router::new()
@@ -92,6 +123,7 @@ pub fn build_router(state: SharedState) -> Router {
         .merge(public_v1)
         .merge(auth_routes)
         .merge(webhook_routes)
+        .merge(public_license_routes)
         .merge(admin_api)
         .layer(TraceLayer::new_for_http())
         .layer(TimeoutLayer::new(Duration::from_secs(30)))

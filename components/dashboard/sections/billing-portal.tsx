@@ -15,10 +15,10 @@ type PortalTab = "invoices" | "subscriptions" | "payment-methods" | "activity";
 const statusColors: Record<string, string> = {
   draft: "bg-muted-foreground/20 text-muted-foreground",
   issued: "bg-blue-500/20 text-blue-400",
-  paid: "bg-emerald-500/20 text-emerald-400",
+  paid: "bg-sky-500/20 text-sky-400",
   overdue: "bg-red-500/20 text-red-400",
   void: "bg-zinc-500/20 text-zinc-400",
-  active: "bg-emerald-500/20 text-emerald-400",
+  active: "bg-sky-500/20 text-sky-400",
   paused: "bg-yellow-500/20 text-yellow-400",
   canceled: "bg-red-500/20 text-red-400",
   past_due: "bg-red-500/20 text-red-400",
@@ -142,24 +142,30 @@ export function BillingPortalSection() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <select
-              className={selectClass}
-              value={effectiveCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-            >
-              {customers.map((c) => (
-                <option key={c.id as string} value={c.id as string}>
-                  {c.name as string}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          </div>
-          {selectedCustomer && (
-            <span className="text-sm text-muted-foreground">
-              {selectedCustomer.email as string}
-            </span>
+          {customers.length === 0 ? (
+            <span className="text-sm text-muted-foreground">No customers yet</span>
+          ) : (
+            <>
+              <div className="relative">
+                <select
+                  className={selectClass}
+                  value={effectiveCustomerId}
+                  onChange={(e) => setSelectedCustomerId(e.target.value)}
+                >
+                  {customers.map((c) => (
+                    <option key={c.id as string} value={c.id as string}>
+                      {c.name as string}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+              {selectedCustomer && (
+                <span className="text-sm text-muted-foreground">
+                  {selectedCustomer.email as string}
+                </span>
+              )}
+            </>
           )}
           {/* Credit Balance */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border">

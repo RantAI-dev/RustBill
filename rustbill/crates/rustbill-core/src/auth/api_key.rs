@@ -35,7 +35,7 @@ pub async fn verify_api_key(pool: &PgPool, key: &str) -> crate::error::Result<Op
     let key_hash = hash_api_key(key);
 
     let row =
-        sqlx::query_as::<_, ApiKeyRow>("SELECT id, name, status FROM api_keys WHERE key_hash = $1")
+        sqlx::query_as::<_, ApiKeyRow>("SELECT id, name, status::text FROM api_keys WHERE key_hash = $1")
             .bind(&key_hash)
             .fetch_optional(pool)
             .await?;

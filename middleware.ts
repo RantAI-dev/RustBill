@@ -36,17 +36,9 @@ export function middleware(req: NextRequest) {
 
   // ---- 2. Production mode: Rust backend handles all API logic ----
   if (RUST_BACKEND) {
-    // Safety net: if a request reaches Next.js /api/* directly
-    // (rewrite didn't proxy it), block it.
+    // Let /api/* pass through so next.config.mjs rewrites proxy to Rust backend
     if (pathname.startsWith("/api/")) {
-      const resp = new NextResponse(
-        JSON.stringify({ error: "API served by backend service" }),
-        {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      return withSecurityHeaders(resp);
+      return withSecurityHeaders(NextResponse.next());
     }
 
     // Login page — redirect to / if already has session cookie
@@ -57,7 +49,13 @@ export function middleware(req: NextRequest) {
       return withSecurityHeaders(NextResponse.next());
     }
 
-    // All other page routes — pass through with security headers
+    // All other page routes — require session cookie
+    if (!req.cookies.has(SESSION_COOKIE)) {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
     return withSecurityHeaders(NextResponse.next());
   }
 
@@ -112,6 +110,6 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon.*|apple-icon.*|manifest|logo/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.*|apple-icon.*|manifest|logo/|rustbill-logo/).*)",
   ],
 };

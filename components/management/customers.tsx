@@ -24,7 +24,7 @@ const trendConfig = {
 const tierColors: Record<string, string> = {
   Enterprise: "bg-violet-500/10 text-violet-500",
   Growth: "bg-blue-500/10 text-blue-500",
-  Starter: "bg-emerald-500/10 text-emerald-500",
+  Starter: "bg-sky-500/10 text-sky-500",
 };
 
 /* ---------- detail view ---------- */
@@ -117,7 +117,7 @@ function CustomerDetail({ customer, onEdit, onDelete }: { customer: Customer; on
                   className="h-full rounded-full transition-all"
                   style={{
                     width: `${health}%`,
-                    backgroundColor: health >= 80 ? "oklch(0.7 0.18 145)" : health >= 50 ? "oklch(0.75 0.18 55)" : "oklch(0.65 0.2 25)",
+                    backgroundColor: health >= 80 ? "oklch(0.75 0.130 243)" : health >= 50 ? "oklch(0.75 0.18 55)" : "oklch(0.65 0.2 25)",
                   }}
                 />
               </div>

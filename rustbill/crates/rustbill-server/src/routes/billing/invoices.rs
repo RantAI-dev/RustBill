@@ -59,7 +59,7 @@ async fn create(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO invoices (id, invoice_number, customer_id, subscription_id, status, currency, subtotal, tax, total, due_at, notes, created_at, updated_at)
            VALUES (gen_random_uuid()::text, 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0'), $1, $2, 'draft', COALESCE($3, 'USD'), $4, $5, $6, $7::timestamp, $8, now(), now())
-           RETURNING to_jsonb(invoices)"#,
+           RETURNING to_jsonb(invoices.*)"#,
     )
     .bind(body["customerId"].as_str())
     .bind(body["subscriptionId"].as_str())
@@ -84,13 +84,13 @@ async fn update(
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE invoices SET
-             status = COALESCE($2, status),
+             status = COALESCE($2::invoice_status, status),
              notes = COALESCE($3, notes),
              due_at = COALESCE($4::timestamp, due_at),
              version = version + 1,
              updated_at = now()
            WHERE id = $1 AND deleted_at IS NULL
-           RETURNING to_jsonb(invoices)"#,
+           RETURNING to_jsonb(invoices.*)"#,
     )
     .bind(&id)
     .bind(body["status"].as_str())
@@ -155,7 +155,7 @@ async fn add_item(
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, amount, period_start, period_end)
            VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6::timestamp, $7::timestamp)
-           RETURNING to_jsonb(invoice_items)"#,
+           RETURNING to_jsonb(invoice_items.*)"#,
     )
     .bind(&id)
     .bind(body["description"].as_str())

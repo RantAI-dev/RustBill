@@ -10,8 +10,8 @@ import {
   FlaskConical,
   Handshake,
   BarChart3,
-  ChevronLeft,
-  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
   Package,
   Building2,
   TrendingUp,
@@ -98,29 +98,45 @@ export function Sidebar({
         collapsed ? "w-[72px]" : "w-[260px]"
       )}
     >
-      {/* Logo */}
+      {/* Logo + toggle */}
       <div className="h-16 flex items-center px-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-3">
-          <Image
-            src={appConfig.logo}
-            alt={appConfig.shortName}
-            width={36}
-            height={36}
-            className="w-9 h-9 rounded-lg shrink-0 object-contain"
-          />
-          <span
-            className={cn(
-              "font-semibold text-lg text-sidebar-foreground whitespace-nowrap transition-all duration-300",
-              collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
-            )}
+        {collapsed ? (
+          <button
+            onClick={() => onCollapsedChange(false)}
+            className="group relative w-9 h-9 rounded-lg shrink-0 cursor-pointer"
           >
-            {appConfig.name}
-          </span>
-        </div>
+            <Image
+              src={appConfig.logo}
+              alt={appConfig.shortName}
+              width={36}
+              height={36}
+              className="w-9 h-9 rounded-lg object-contain transition-opacity duration-200 group-hover:opacity-0"
+            />
+            <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-sidebar-accent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <PanelLeftOpen className="w-5 h-5 text-sidebar-foreground" />
+            </div>
+          </button>
+        ) : (
+          <div className="flex items-center justify-between w-full">
+            <Image
+              src={appConfig.logoFull}
+              alt={appConfig.name}
+              width={160}
+              height={40}
+              className="h-9 w-auto object-contain"
+            />
+            <button
+              onClick={() => onCollapsedChange(true)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors duration-200"
+            >
+              <PanelLeftClose className="w-[18px] h-[18px]" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-4 overflow-hidden overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-4 overflow-hidden overflow-y-auto sidebar-scroll">
         {navGroups.map((group) => (
           <div key={group.label}>
             <span
@@ -175,22 +191,6 @@ export function Sidebar({
         ))}
       </nav>
 
-      {/* Collapse button */}
-      <div className="p-3 border-t border-sidebar-border">
-        <button
-          onClick={() => onCollapsedChange(!collapsed)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200"
-        >
-          {collapsed ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <>
-              <ChevronLeft className="w-5 h-5" />
-              <span>Collapse</span>
-            </>
-          )}
-        </button>
-      </div>
     </aside>
   );
 }

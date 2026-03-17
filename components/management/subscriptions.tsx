@@ -16,7 +16,7 @@ type Sub = Record<string, unknown>;
 type DialogMode = "view" | "edit" | "create";
 
 const statusColors: Record<string, string> = {
-  active: "bg-emerald-500/20 text-emerald-400",
+  active: "bg-sky-500/20 text-sky-400",
   paused: "bg-amber-500/20 text-amber-400",
   canceled: "bg-zinc-500/20 text-zinc-400",
   past_due: "bg-red-500/20 text-red-400",

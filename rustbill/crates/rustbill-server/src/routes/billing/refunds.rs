@@ -55,8 +55,8 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO refunds (id, payment_id, invoice_id, amount, reason, status, stripe_refund_id, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'pending', $5, now())
-           RETURNING to_jsonb(refunds)"#,
+           VALUES (gen_random_uuid()::text, $1, COALESCE($2, (SELECT invoice_id FROM payments WHERE id = $1)), $3, $4, 'pending', $5, now())
+           RETURNING to_jsonb(refunds.*)"#,
     )
     .bind(body["paymentId"].as_str())
     .bind(body["invoiceId"].as_str())
@@ -78,10 +78,10 @@ async fn update(
 ) -> ApiResult<Json<serde_json::Value>> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE refunds SET
-             status = COALESCE($2, status),
-             processed_at = CASE WHEN $2 = 'completed' THEN now() ELSE processed_at END
+             status = COALESCE($2::refund_status, status),
+             processed_at = CASE WHEN $2::refund_status = 'completed' THEN now() ELSE processed_at END
            WHERE id = $1 AND deleted_at IS NULL
-           RETURNING to_jsonb(refunds)"#,
+           RETURNING to_jsonb(refunds.*)"#,
     )
     .bind(&id)
     .bind(body["status"].as_str())

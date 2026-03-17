@@ -161,7 +161,7 @@ export function ReportsSection() {
                 <Line
                   type="monotone"
                   dataKey="rate"
-                  stroke="oklch(0.7 0.18 145)"
+                  stroke="oklch(0.75 0.130 243)"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4, strokeWidth: 2 }}
