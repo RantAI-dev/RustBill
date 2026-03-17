@@ -301,10 +301,18 @@ pub async fn run_lifecycle(pool: &PgPool) -> Result<u64> {
 
 // ---- Helpers ----
 
-fn advance_period(from: NaiveDateTime, cycle: &BillingCycle) -> NaiveDateTime {
-    match cycle {
-        BillingCycle::Monthly => from + chrono::Duration::days(30),
-        BillingCycle::Quarterly => from + chrono::Duration::days(90),
-        BillingCycle::Yearly => from + chrono::Duration::days(365),
-    }
+/// Advance a period by one billing cycle using calendar-month semantics.
+/// Monthly: Jan 15 -> Feb 15 -> Mar 15 (not +30 days).
+pub fn advance_period(from: NaiveDateTime, cycle: &BillingCycle) -> NaiveDateTime {
+    let date = from.date();
+    let time = from.time();
+    let months = match cycle {
+        BillingCycle::Monthly => 1,
+        BillingCycle::Quarterly => 3,
+        BillingCycle::Yearly => 12,
+    };
+    let new_date = date
+        .checked_add_months(chrono::Months::new(months))
+        .unwrap_or_else(|| date + chrono::Duration::days(months as i64 * 30));
+    new_date.and_time(time)
 }

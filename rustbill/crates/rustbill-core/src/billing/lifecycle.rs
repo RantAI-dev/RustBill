@@ -443,12 +443,9 @@ struct SubscriptionDiscountWithCoupon {
     coupon_code: String,
 }
 
+/// Re-export from subscriptions module (single source of truth).
 fn advance_period(from: NaiveDateTime, cycle: &BillingCycle) -> NaiveDateTime {
-    match cycle {
-        BillingCycle::Monthly => from + chrono::Duration::days(30),
-        BillingCycle::Quarterly => from + chrono::Duration::days(90),
-        BillingCycle::Yearly => from + chrono::Duration::days(365),
-    }
+    super::subscriptions::advance_period(from, cycle)
 }
 
 fn format_cycle(cycle: &BillingCycle) -> &'static str {
