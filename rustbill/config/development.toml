@@ -1,5 +1,8 @@
 [server]
-port = 3001
+port = 8080
+
+[database]
+url = "postgresql://rantai_billing:rantai_billing_dev@localhost:5444/rantai_billing"
 
 [cron]
 enabled = false
