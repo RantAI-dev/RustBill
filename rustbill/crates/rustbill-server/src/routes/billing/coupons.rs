@@ -55,7 +55,7 @@ async fn create(
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO coupons (id, code, name, discount_type, discount_value, currency, max_redemptions, times_redeemed, valid_from, valid_until, active, applies_to, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, COALESCE($5, 'USD'), $6, 0, COALESCE($7::timestamp, now()), $8::timestamp, COALESCE($9, true), $10, now(), now())
+           VALUES (gen_random_uuid()::text, $1, $2, $3::discount_type, $4::numeric, COALESCE($5, 'USD'), $6, 0, COALESCE($7::timestamp, now()), $8::timestamp, COALESCE($9, true), $10::jsonb, now(), now())
            RETURNING to_jsonb(coupons)"#,
     )
     .bind(body["code"].as_str())
@@ -67,7 +67,7 @@ async fn create(
     .bind(body["validFrom"].as_str())
     .bind(body["validUntil"].as_str())
     .bind(body["active"].as_bool())
-    .bind(body.get("appliesTo"))
+    .bind(body.get("appliesTo").map(|v| v.to_string()))
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -85,13 +85,13 @@ async fn update(
         r#"UPDATE coupons SET
              code = COALESCE($2, code),
              name = COALESCE($3, name),
-             discount_type = COALESCE($4, discount_type),
-             discount_value = COALESCE($5, discount_value),
+             discount_type = COALESCE($4::discount_type, discount_type),
+             discount_value = COALESCE($5::numeric, discount_value),
              currency = COALESCE($6, currency),
              max_redemptions = COALESCE($7, max_redemptions),
              valid_until = COALESCE($8::timestamp, valid_until),
              active = COALESCE($9, active),
-             applies_to = COALESCE($10, applies_to),
+             applies_to = COALESCE($10::jsonb, applies_to),
              updated_at = now()
            WHERE id = $1 AND deleted_at IS NULL
            RETURNING to_jsonb(coupons)"#,
@@ -105,7 +105,7 @@ async fn update(
     .bind(body["maxRedemptions"].as_i64().map(|v| v as i32))
     .bind(body["validUntil"].as_str())
     .bind(body["active"].as_bool())
-    .bind(body.get("appliesTo"))
+    .bind(body.get("appliesTo").map(|v| v.to_string()))
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?
