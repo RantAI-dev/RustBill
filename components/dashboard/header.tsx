@@ -34,6 +34,7 @@ const sectionTitles: Record<Section, string> = {
   "manage-coupons": "Coupons & Discounts",
   "manage-webhooks": "Webhooks",
   "billing-portal": "Billing Portal",
+  "manage-tax-rules": "Tax Rules",
 };
 
 export function Header({ activeSection, onOpenSearch }: HeaderProps) {

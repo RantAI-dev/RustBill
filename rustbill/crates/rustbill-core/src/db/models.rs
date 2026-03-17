@@ -1,7 +1,7 @@
 //! Database models matching the existing PostgreSQL schema exactly.
 //! All types use sqlx::FromRow for direct mapping.
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -244,6 +244,74 @@ pub enum BillingEventType {
     #[serde(rename = "dunning.suspension")]
     #[sqlx(rename = "dunning.suspension")]
     DunningSuspension,
+    #[serde(rename = "credit.deposited")]
+    #[sqlx(rename = "credit.deposited")]
+    CreditDeposited,
+    #[serde(rename = "credit.applied")]
+    #[sqlx(rename = "credit.applied")]
+    CreditApplied,
+    #[serde(rename = "payment_method.added")]
+    #[sqlx(rename = "payment_method.added")]
+    PaymentMethodAdded,
+    #[serde(rename = "payment_method.removed")]
+    #[sqlx(rename = "payment_method.removed")]
+    PaymentMethodRemoved,
+    #[serde(rename = "payment_method.failed")]
+    #[sqlx(rename = "payment_method.failed")]
+    PaymentMethodFailed,
+    #[serde(rename = "subscription.plan_changed")]
+    #[sqlx(rename = "subscription.plan_changed")]
+    SubscriptionPlanChanged,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "credit_reason", rename_all = "snake_case")]
+pub enum CreditReason {
+    #[serde(rename = "proration")]
+    Proration,
+    #[serde(rename = "credit_note")]
+    CreditNote,
+    #[serde(rename = "manual")]
+    Manual,
+    #[serde(rename = "overpayment")]
+    Overpayment,
+    #[serde(rename = "refund")]
+    Refund,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "saved_payment_method_status", rename_all = "snake_case")]
+pub enum SavedPaymentMethodStatus {
+    #[serde(rename = "active")]
+    Active,
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "failed")]
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "saved_payment_method_type", rename_all = "snake_case")]
+pub enum SavedPaymentMethodType {
+    #[serde(rename = "card")]
+    Card,
+    #[serde(rename = "bank_account")]
+    BankAccount,
+    #[serde(rename = "ewallet")]
+    Ewallet,
+    #[serde(rename = "va")]
+    Va,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
+#[sqlx(type_name = "payment_provider", rename_all = "snake_case")]
+pub enum PaymentProvider {
+    #[serde(rename = "stripe")]
+    Stripe,
+    #[serde(rename = "xendit")]
+    Xendit,
+    #[serde(rename = "lemonsqueezy")]
+    Lemonsqueezy,
 }
 
 // ---- Helper types for JSONB columns ----
@@ -435,6 +503,7 @@ pub struct Subscription {
     pub quantity: i32,
     pub metadata: Option<serde_json::Value>,
     pub stripe_subscription_id: Option<String>,
+    pub managed_by: Option<String>,
     pub version: i32,
     pub deleted_at: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
@@ -463,6 +532,13 @@ pub struct Invoice {
     pub deleted_at: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub tax_name: Option<String>,
+    pub tax_rate: Option<Decimal>,
+    pub tax_inclusive: bool,
+    pub credits_applied: Decimal,
+    pub amount_due: Decimal,
+    pub auto_charge_attempts: i32,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -623,5 +699,58 @@ pub struct SystemSetting {
     pub key: String,
     pub value: String,
     pub sensitive: bool,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CustomerCreditBalance {
+    pub customer_id: String,
+    pub currency: String,
+    pub balance: Decimal,
+    pub updated_at: NaiveDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CustomerCredit {
+    pub id: String,
+    pub customer_id: String,
+    pub currency: String,
+    pub amount: Decimal,
+    pub balance_after: Decimal,
+    pub reason: CreditReason,
+    pub description: String,
+    pub invoice_id: Option<String>,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TaxRule {
+    pub id: String,
+    pub country: String,
+    pub region: Option<String>,
+    pub tax_name: String,
+    pub rate: Decimal,
+    pub inclusive: bool,
+    pub product_category: Option<String>,
+    pub active: bool,
+    pub effective_from: NaiveDate,
+    pub effective_to: Option<NaiveDate>,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SavedPaymentMethod {
+    pub id: String,
+    pub customer_id: String,
+    pub provider: PaymentProvider,
+    pub provider_token: String,
+    pub method_type: SavedPaymentMethodType,
+    pub label: String,
+    pub last_four: Option<String>,
+    pub expiry_month: Option<i32>,
+    pub expiry_year: Option<i32>,
+    pub is_default: bool,
+    pub status: SavedPaymentMethodStatus,
+    pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }

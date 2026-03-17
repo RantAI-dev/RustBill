@@ -367,6 +367,45 @@ export function useReportsAnalytics() {
   return useSWR("/api/analytics/reports", fetcher);
 }
 
+// ---- Tax Rules ----
+export function useTaxRules() {
+  return useSWR("/api/billing/tax-rules", fetcher);
+}
+export async function createTaxRule(data: Record<string, unknown>) {
+  return mutate("/api/billing/tax-rules", { method: "POST", body: JSON.stringify(data) }, "Failed to create tax rule");
+}
+export async function updateTaxRule(id: string, data: Record<string, unknown>) {
+  return mutate(`/api/billing/tax-rules/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update tax rule");
+}
+export async function deleteTaxRule(id: string) {
+  return mutate(`/api/billing/tax-rules/${id}`, { method: "DELETE" }, "Failed to delete tax rule");
+}
+
+// ---- Credits ----
+export function useCustomerCredits(customerId: string | undefined) {
+  return useSWR(
+    customerId ? `/api/billing/credits?customerId=${customerId}` : null,
+    fetcher,
+  );
+}
+export async function adjustCredits(data: Record<string, unknown>) {
+  return mutate("/api/billing/credits", { method: "POST", body: JSON.stringify(data) }, "Failed to adjust credits");
+}
+
+// ---- Saved Payment Methods ----
+export function useSavedPaymentMethods(customerId: string | undefined) {
+  return useSWR(
+    customerId ? `/api/billing/payment-methods?customerId=${customerId}` : null,
+    fetcher,
+  );
+}
+export async function deletePaymentMethod(id: string) {
+  return mutate(`/api/billing/payment-methods/${id}`, { method: "DELETE" }, "Failed to delete payment method");
+}
+export async function setDefaultPaymentMethod(id: string) {
+  return mutate(`/api/billing/payment-methods/${id}/default`, { method: "POST" }, "Failed to set default payment method");
+}
+
 // ---- Search ----
 export function useSearch(query: string) {
   return useSWR(

@@ -1,14 +1,17 @@
 pub mod checkout;
 pub mod coupons;
 pub mod credit_notes;
+pub mod credits;
 pub mod cron;
 pub mod dunning;
 pub mod events;
 pub mod invoices;
+pub mod payment_methods;
 pub mod payments;
 pub mod plans;
 pub mod refunds;
 pub mod subscriptions;
+pub mod tax_rules;
 pub mod usage;
 pub mod webhooks;
 
@@ -30,4 +33,7 @@ pub fn router() -> Router<SharedState> {
         .nest("/events", events::router())
         .nest("/webhooks", webhooks::router())
         .nest("/cron", cron::router())
+        .nest("/credits", credits::router())
+        .nest("/tax-rules", tax_rules::router())
+        .nest("/payment-methods", payment_methods::router())
 }

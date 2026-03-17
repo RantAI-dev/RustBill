@@ -177,7 +177,7 @@ async fn create_payment_inner(
 
     let net_paid = total_paid.unwrap_or_default() - total_refunded.unwrap_or_default();
 
-    if net_paid >= invoice.total {
+    if net_paid >= invoice.amount_due {
         sqlx::query(
             "UPDATE invoices SET status = 'paid', paid_at = $2, version = version + 1, updated_at = NOW() WHERE id = $1",
         )
@@ -185,9 +185,27 @@ async fn create_payment_inner(
         .bind(paid_at)
         .execute(&mut *tx)
         .await?;
+
+        // Deposit overpayment as credit to customer wallet
+        if net_paid > invoice.amount_due {
+            let excess = net_paid - invoice.amount_due;
+            if let Err(e) = crate::billing::credits::deposit(
+                &mut *tx,
+                &invoice.customer_id,
+                &invoice.currency,
+                excess,
+                CreditReason::Overpayment,
+                &format!("Overpayment on invoice {}", invoice.invoice_number),
+                Some(&invoice.id),
+            )
+            .await
+            {
+                tracing::warn!("Failed to deposit overpayment credit: {e}");
+            }
+        }
     }
 
-    let invoice_became_paid = net_paid >= invoice.total;
+    let invoice_became_paid = net_paid >= invoice.amount_due;
 
     tx.commit().await?;
     Ok((payment, invoice, invoice_became_paid))

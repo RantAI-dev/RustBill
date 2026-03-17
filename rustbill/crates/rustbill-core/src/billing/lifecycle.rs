@@ -130,7 +130,7 @@ async fn renew_active_subscriptions(
     let mut invoiced: u64 = 0;
     let mut errors: Vec<String> = Vec::new();
 
-    // Fetch all active subs past period end (not canceling)
+    // Fetch all active subs past period end (not canceling, not externally managed)
     let subs = sqlx::query_as::<_, Subscription>(
         r#"
         SELECT * FROM subscriptions
@@ -138,6 +138,8 @@ async fn renew_active_subscriptions(
           AND deleted_at IS NULL
           AND cancel_at_period_end = false
           AND current_period_end <= $1
+          AND (managed_by IS NULL OR managed_by = '')
+        FOR UPDATE SKIP LOCKED
         "#,
     )
     .bind(now)
@@ -282,7 +284,7 @@ async fn renew_single_subscription(
         }
     }
 
-    // Recompute invoice totals
+    // Recompute invoice subtotal from line items (plan + discounts)
     let subtotal: Option<Decimal> = sqlx::query_scalar(
         "SELECT COALESCE(SUM(amount), 0) FROM invoice_items WHERE invoice_id = $1",
     )
@@ -291,16 +293,80 @@ async fn renew_single_subscription(
     .await?;
 
     let subtotal = subtotal.unwrap_or_default();
-    let total = subtotal; // No tax on auto-renewals by default
 
+    // Step 3a: Tax calculation (uses pool for read-only lookup)
+    let customer = sqlx::query_as::<_, Customer>(
+        "SELECT * FROM customers WHERE id = $1",
+    )
+    .bind(&sub.customer_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let tax_result = crate::billing::tax::resolve_tax(
+        pool,
+        customer.billing_country.as_deref().unwrap_or(""),
+        customer.billing_state.as_deref(),
+        None,
+        subtotal,
+    )
+    .await?;
+
+    let tax_amount = tax_result.amount;
+    let total = if tax_result.inclusive {
+        subtotal // Tax is already included in the subtotal
+    } else {
+        subtotal + tax_amount // Add tax on top
+    };
+
+    // Step 3b: Update invoice with computed totals and tax fields
     sqlx::query(
-        "UPDATE invoices SET subtotal = $2, tax = 0, total = $3, updated_at = NOW() WHERE id = $1",
+        r#"UPDATE invoices SET
+            subtotal = $2, tax = $3, total = $4,
+            tax_name = $5, tax_rate = $6, tax_inclusive = $7,
+            credits_applied = 0, amount_due = $4,
+            updated_at = NOW()
+        WHERE id = $1"#,
     )
     .bind(&invoice.id)
     .bind(subtotal)
+    .bind(tax_amount)
     .bind(total)
+    .bind(&tax_result.name)
+    .bind(tax_result.rate)
+    .bind(tax_result.inclusive)
     .execute(&mut *tx)
     .await?;
+
+    // Step 3c: Apply customer credits
+    let credits_applied = crate::billing::credits::apply_to_invoice(
+        &mut tx,
+        &sub.customer_id,
+        &invoice.id,
+        &invoice.currency,
+        total,
+    )
+    .await?;
+
+    let final_amount_due = total - credits_applied;
+
+    if credits_applied > Decimal::ZERO {
+        sqlx::query(
+            "UPDATE invoices SET credits_applied = $2, amount_due = $3 WHERE id = $1",
+        )
+        .bind(&invoice.id)
+        .bind(credits_applied)
+        .bind(final_amount_due)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // Step 3d: If fully covered by credits, mark as paid immediately
+    if final_amount_due <= Decimal::ZERO {
+        sqlx::query("UPDATE invoices SET status = 'paid' WHERE id = $1")
+            .bind(&invoice.id)
+            .execute(&mut *tx)
+            .await?;
+    }
 
     // Advance the subscription period
     sqlx::query(
@@ -318,7 +384,59 @@ async fn renew_single_subscription(
     .execute(&mut *tx)
     .await?;
 
+    // Save invoice_id before committing (invoice is consumed by tx)
+    let invoice_id = invoice.id.clone();
+
     tx.commit().await?;
+
+    // Step 3e: Auto-charge (outside transaction — may make external API calls)
+    if final_amount_due > Decimal::ZERO {
+        if let Ok(Some(payment_method)) =
+            crate::billing::payment_methods::get_default(pool, &sub.customer_id).await
+        {
+            // Re-fetch invoice after commit
+            if let Ok(committed_invoice) = sqlx::query_as::<_, Invoice>(
+                "SELECT * FROM invoices WHERE id = $1",
+            )
+            .bind(&invoice_id)
+            .fetch_one(pool)
+            .await
+            {
+                match crate::billing::auto_charge::try_auto_charge(
+                    pool,
+                    &committed_invoice,
+                    &payment_method,
+                    http_client,
+                )
+                .await
+                {
+                    Ok(crate::billing::auto_charge::ChargeResult::Success) => {
+                        tracing::info!("Auto-charge succeeded for invoice {}", invoice_id);
+                    }
+                    Ok(crate::billing::auto_charge::ChargeResult::PermanentFailure(reason)) => {
+                        tracing::warn!(
+                            "Auto-charge permanently failed for invoice {}: {}",
+                            invoice_id,
+                            reason
+                        );
+                        crate::billing::payment_methods::mark_failed(pool, &payment_method.id)
+                            .await
+                            .ok();
+                    }
+                    Ok(result) => {
+                        tracing::info!(
+                            "Auto-charge result for invoice {}: {:?}",
+                            invoice_id,
+                            result
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Auto-charge error for invoice {}: {}", invoice_id, e);
+                    }
+                }
+            }
+        }
+    }
 
     // Emit billing event (non-blocking)
     let pool_clone = pool.clone();
@@ -326,7 +444,7 @@ async fn renew_single_subscription(
     let sub_id = sub.id.clone();
     let cust_id = sub.customer_id.clone();
     let inv_data = serde_json::json!({
-        "invoice_id": invoice.id,
+        "invoice_id": invoice_id,
         "invoice_number": invoice_number,
         "total": total.to_string(),
     });
@@ -443,12 +561,9 @@ struct SubscriptionDiscountWithCoupon {
     coupon_code: String,
 }
 
+/// Re-export from subscriptions module (single source of truth).
 fn advance_period(from: NaiveDateTime, cycle: &BillingCycle) -> NaiveDateTime {
-    match cycle {
-        BillingCycle::Monthly => from + chrono::Duration::days(30),
-        BillingCycle::Quarterly => from + chrono::Duration::days(90),
-        BillingCycle::Yearly => from + chrono::Duration::days(365),
-    }
+    super::subscriptions::advance_period(from, cycle)
 }
 
 fn format_cycle(cycle: &BillingCycle) -> &'static str {
