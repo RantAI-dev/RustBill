@@ -24,6 +24,7 @@ import { ManageSubscriptionsSection } from "@/components/management/subscription
 import { ManageInvoicesSection } from "@/components/management/invoices";
 import { ManageCouponsSection } from "@/components/management/coupons";
 import { ManageWebhooksSection } from "@/components/management/webhooks";
+import { TaxRulesManagement } from "@/components/management/tax-rules";
 import { BillingPortalSection } from "@/components/dashboard/sections/billing-portal";
 import { ApiProvider } from "@/hooks/use-api";
 import { BackendBanner } from "@/components/backend-banner";
@@ -31,7 +32,7 @@ import { BackendBanner } from "@/components/backend-banner";
 export type Section =
   | "overview" | "trials" | "deals" | "customers" | "licenses" | "products" | "forecasting" | "reports" | "settings" | "api-docs" | "billing"
   | "manage-products" | "manage-deals" | "manage-customers" | "manage-licenses" | "manage-plans" | "manage-subscriptions" | "manage-invoices" | "manage-coupons"
-  | "manage-webhooks" | "billing-portal";
+  | "manage-webhooks" | "manage-tax-rules" | "billing-portal";
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
@@ -84,6 +85,8 @@ export default function Dashboard() {
         return <ManageCouponsSection />;
       case "manage-webhooks":
         return <ManageWebhooksSection />;
+      case "manage-tax-rules":
+        return <TaxRulesManagement />;
       case "billing-portal":
         return <BillingPortalSection />;
       default:

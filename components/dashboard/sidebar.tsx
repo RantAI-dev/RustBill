@@ -24,6 +24,7 @@ import {
   FileText,
   Tag,
   Globe,
+  Scale,
   UserCircle,
 } from "lucide-react";
 
@@ -66,6 +67,7 @@ const navGroups: NavGroup[] = [
       { id: "manage-invoices", label: "Invoices", icon: FileText },
       { id: "manage-coupons", label: "Coupons", icon: Tag },
       { id: "manage-webhooks", label: "Webhooks", icon: Globe },
+      { id: "manage-tax-rules", label: "Tax Rules", icon: Scale },
     ],
   },
   {
