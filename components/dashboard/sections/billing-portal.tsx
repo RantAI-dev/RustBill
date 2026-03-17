@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { Download, FileText, CreditCard, Activity, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
+import { Download, FileText, CreditCard, Activity, ChevronDown, ExternalLink, Loader2, Wallet, Trash2, Star } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { useCustomers, useInvoices, useSubscriptions, useBillingEvents, getInvoicePdfUrl, getCheckout } from "@/hooks/use-api";
+import { useCustomers, useInvoices, useSubscriptions, useBillingEvents, useCustomerCredits, useSavedPaymentMethods, deletePaymentMethod, setDefaultPaymentMethod, getInvoicePdfUrl, getCheckout } from "@/hooks/use-api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
-type PortalTab = "invoices" | "subscriptions" | "activity";
+type PortalTab = "invoices" | "subscriptions" | "payment-methods" | "activity";
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted-foreground/20 text-muted-foreground",
@@ -25,6 +25,7 @@ const statusColors: Record<string, string> = {
   trialing: "bg-blue-500/20 text-blue-400",
   pending: "bg-yellow-500/20 text-yellow-400",
   completed: "bg-emerald-500/20 text-emerald-400",
+  expired: "bg-red-500/20 text-red-400",
 };
 
 const eventTypeLabels: Record<string, string> = {
@@ -53,6 +54,13 @@ const providerInfo: Record<PaymentProvider, { label: string; description: string
   stripe: { label: "Stripe", description: "Credit/debit cards (International)" },
 };
 
+const providerBadgeColors: Record<string, string> = {
+  stripe: "bg-purple-500/20 text-purple-400",
+  xendit: "bg-blue-500/20 text-blue-400",
+  lemonsqueezy: "bg-yellow-500/20 text-yellow-400",
+  paypal: "bg-blue-500/20 text-blue-400",
+};
+
 export function BillingPortalSection() {
   const { data: customerList, isLoading: loadingCustomers } = useCustomers();
   const { data: allInvoices, isLoading: loadingInvoices } = useInvoices();
@@ -65,10 +73,19 @@ export function BillingPortalSection() {
   const [payInvoice, setPayInvoice] = useState<Record<string, unknown> | null>(null);
   const [payingWith, setPayingWith] = useState<PaymentProvider | null>(null);
 
+  // Auto-select first customer
+  const effectiveCustomerId = selectedCustomerId || (customers[0]?.id as string) || "";
+  const selectedCustomer = customers.find((c) => (c.id as string) === effectiveCustomerId);
+
   const { data: events, isLoading: loadingEvents } = useBillingEvents(
-    selectedCustomerId || undefined,
+    effectiveCustomerId || undefined,
     50
   );
+
+  const { data: credits } = useCustomerCredits(effectiveCustomerId || undefined);
+  const { data: paymentMethods, isLoading: loadingPaymentMethods, mutate: mutatePaymentMethods } = useSavedPaymentMethods(effectiveCustomerId || undefined);
+
+  const creditBalance = (credits as Record<string, unknown>)?.balance as number ?? 0;
 
   const handlePay = async (provider: PaymentProvider) => {
     if (!payInvoice) return;
@@ -84,9 +101,21 @@ export function BillingPortalSection() {
     setPayInvoice(null);
   };
 
-  // Auto-select first customer
-  const effectiveCustomerId = selectedCustomerId || (customers[0]?.id as string) || "";
-  const selectedCustomer = customers.find((c) => (c.id as string) === effectiveCustomerId);
+  const handleDeletePaymentMethod = async (id: string) => {
+    const result = await deletePaymentMethod(id);
+    if (result.success) {
+      toast.success("Payment method removed");
+      mutatePaymentMethods();
+    }
+  };
+
+  const handleSetDefault = async (id: string) => {
+    const result = await setDefaultPaymentMethod(id);
+    if (result.success) {
+      toast.success("Default payment method updated");
+      mutatePaymentMethods();
+    }
+  };
 
   // Filter data by customer
   const invoices = ((allInvoices ?? []) as Record<string, unknown>[]).filter(
@@ -95,6 +124,7 @@ export function BillingPortalSection() {
   const subs = ((allSubs ?? []) as Record<string, unknown>[]).filter(
     (s) => (s.customerId as string) === effectiveCustomerId
   );
+  const methods = (paymentMethods ?? []) as Record<string, unknown>[];
 
   const selectClass = "h-9 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground appearance-none pr-8 focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent";
 
@@ -131,6 +161,12 @@ export function BillingPortalSection() {
               {selectedCustomer.email as string}
             </span>
           )}
+          {/* Credit Balance */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary border border-border">
+            <Wallet className="w-3.5 h-3.5 text-accent" />
+            <span className="text-xs text-muted-foreground">Credits:</span>
+            <span className="text-sm font-semibold text-foreground">${creditBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -138,6 +174,7 @@ export function BillingPortalSection() {
           {([
             { key: "invoices" as const, label: "Invoices", icon: FileText },
             { key: "subscriptions" as const, label: "Subscriptions", icon: CreditCard },
+            { key: "payment-methods" as const, label: "Payment Methods", icon: Wallet },
             { key: "activity" as const, label: "Activity", icon: Activity },
           ]).map((t) => (
             <button
@@ -173,6 +210,9 @@ export function BillingPortalSection() {
                   <TableHead className="text-xs font-semibold uppercase tracking-wider">Invoice #</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider">Status</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Total</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Tax</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Credits Applied</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Amount Due</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider">Issued</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider">Due</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider">Paid</TableHead>
@@ -180,48 +220,57 @@ export function BillingPortalSection() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoices.map((inv) => (
-                  <TableRow key={inv.id as string}>
-                    <TableCell className="font-mono text-xs">{inv.invoiceNumber as string}</TableCell>
-                    <TableCell>
-                      <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", statusColors[(inv.status as string)] ?? "bg-secondary")}>
-                        {inv.status as string}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">${(inv.total as number).toLocaleString()}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {inv.issuedAt ? new Date(inv.issuedAt as string).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {inv.dueAt ? new Date(inv.dueAt as string).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {inv.paidAt ? new Date(inv.paidAt as string).toLocaleDateString() : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 justify-end">
-                        {(inv.status === "issued" || inv.status === "overdue") && (
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="h-7 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
-                            onClick={() => { setPayInvoice(inv); setPayDialogOpen(true); }}
-                          >
-                            <ExternalLink className="w-3 h-3 mr-1" />
-                            Pay
-                          </Button>
-                        )}
-                        {inv.status !== "draft" && (
-                          <a href={getInvoicePdfUrl(inv.id as string)} target="_blank" rel="noopener noreferrer">
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <Download className="w-4 h-4" />
+                {invoices.map((inv) => {
+                  const total = (inv.total as number) ?? 0;
+                  const tax = (inv.taxAmount as number) ?? 0;
+                  const creditsApplied = (inv.creditsApplied as number) ?? 0;
+                  const amountDue = (inv.amountDue as number) ?? total;
+                  return (
+                    <TableRow key={inv.id as string}>
+                      <TableCell className="font-mono text-xs">{inv.invoiceNumber as string}</TableCell>
+                      <TableCell>
+                        <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", statusColors[(inv.status as string)] ?? "bg-secondary")}>
+                          {inv.status as string}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">${total.toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{tax > 0 ? `$${tax.toLocaleString()}` : "—"}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{creditsApplied > 0 ? `$${creditsApplied.toLocaleString()}` : "—"}</TableCell>
+                      <TableCell className="text-right font-medium">${amountDue.toLocaleString()}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {inv.issuedAt ? new Date(inv.issuedAt as string).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {inv.dueAt ? new Date(inv.dueAt as string).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {inv.paidAt ? new Date(inv.paidAt as string).toLocaleDateString() : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 justify-end">
+                          {(inv.status === "issued" || inv.status === "overdue") && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-7 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
+                              onClick={() => { setPayInvoice(inv); setPayDialogOpen(true); }}
+                            >
+                              <ExternalLink className="w-3 h-3 mr-1" />
+                              Pay
                             </Button>
-                          </a>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          )}
+                          {inv.status !== "draft" && (
+                            <a href={getInvoicePdfUrl(inv.id as string)} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </a>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -263,6 +312,81 @@ export function BillingPortalSection() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "payment-methods" && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          {loadingPaymentMethods ? (
+            <div className="p-6 space-y-3">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}
+            </div>
+          ) : methods.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">No saved payment methods</div>
+          ) : (
+            <div className="divide-y divide-border">
+              {methods.map((pm) => {
+                const isDefault = pm.isDefault as boolean;
+                const provider = (pm.provider as string) ?? "";
+                const status = (pm.status as string) ?? "active";
+                return (
+                  <div key={pm.id as string} className="flex items-center justify-between px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5 text-muted-foreground" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground">
+                            {(pm.label as string) ?? "Card"}
+                          </span>
+                          {pm.lastFour && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              **** {pm.lastFour as string}
+                            </span>
+                          )}
+                          {isDefault && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/20 text-accent">
+                              DEFAULT
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {provider && (
+                            <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium capitalize", providerBadgeColors[provider] ?? "bg-secondary text-muted-foreground")}>
+                              {provider}
+                            </span>
+                          )}
+                          <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium capitalize", statusColors[status] ?? "bg-secondary")}>
+                            {status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!isDefault && status === "active" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => handleSetDefault(pm.id as string)}
+                        >
+                          <Star className="w-3.5 h-3.5 mr-1" />
+                          Set Default
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleDeletePaymentMethod(pm.id as string)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
