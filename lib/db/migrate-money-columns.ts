@@ -4,7 +4,7 @@
  */
 import postgres from "postgres";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://rantai_billing:rantai_billing_dev@localhost:5433/rantai_billing";
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://rantai_billing:rantai_billing_dev@localhost:5444/rantai_billing";
 const sql = postgres(DATABASE_URL);
 
 const alterations = [

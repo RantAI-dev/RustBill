@@ -55,7 +55,7 @@ components/
 
 ### Data Layer
 
-**Database**: PostgreSQL 17 via Docker Compose (port 5433), managed with Drizzle ORM + postgres.js driver.
+**Database**: PostgreSQL 17 via Docker Compose (port 5444), managed with Drizzle ORM + postgres.js driver.
 
 **ORM & Schema** ([lib/db/schema.ts](lib/db/schema.ts)):
 - `products` — single-table inheritance for licensed/saas/api types (type-specific fields nullable, discriminated by `productType` enum)
