@@ -1,6 +1,7 @@
 pub mod checkout;
 pub mod coupons;
 pub mod credit_notes;
+pub mod credits;
 pub mod dunning;
 pub mod invoice_pdf;
 pub mod invoices;
@@ -9,5 +10,6 @@ pub mod payments;
 pub mod plans;
 pub mod refunds;
 pub mod subscriptions;
+pub mod tax;
 pub mod tiered_pricing;
 pub mod usage;
