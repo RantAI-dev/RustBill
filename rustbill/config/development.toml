@@ -1,5 +1,5 @@
 [server]
-port = 8080
+port = 8787
 
 [database]
 url = "postgresql://rantai_billing:rantai_billing_dev@localhost:5444/rantai_billing"
