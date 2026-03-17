@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="rustbill-logo/Full.png" width="400" alt="RustBill Logo" />
+  <img src="rustbill-logo/Full.png" width="600" alt="RustBill Logo" />
 </p>
 
 <h1 align="center">RustBill</h1>
