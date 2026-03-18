@@ -227,13 +227,26 @@ export function BillingPortalSection() {
               </TableHeader>
               <TableBody>
                 {invoices.map((inv) => {
-                  const total = (inv.total as number) ?? 0;
-                  const tax = (inv.taxAmount as number) ?? 0;
-                  const creditsApplied = (inv.creditsApplied as number) ?? 0;
-                  const amountDue = (inv.amountDue as number) ?? total;
+                  const total = Number((inv.total as number | string) ?? 0);
+                  const tax = Number((inv.tax as number | string) ?? (inv.taxAmount as number | string) ?? 0);
+                  const creditsApplied = Number(
+                    (inv.creditsApplied as number | string) ??
+                    (inv.credits_applied as number | string) ??
+                    0,
+                  );
+                  const amountDue = Number(
+                    (inv.amountDue as number | string) ??
+                    (inv.amount_due as number | string) ??
+                    total,
+                  );
+                  const invoiceNumber =
+                    (inv.invoiceNumber as string) ?? (inv.invoice_number as string) ?? "-";
+                  const issuedAt = (inv.issuedAt as string) ?? (inv.issued_at as string);
+                  const dueAt = (inv.dueAt as string) ?? (inv.due_at as string);
+                  const paidAt = (inv.paidAt as string) ?? (inv.paid_at as string);
                   return (
                     <TableRow key={inv.id as string}>
-                      <TableCell className="font-mono text-xs">{inv.invoiceNumber as string}</TableCell>
+                      <TableCell className="font-mono text-xs">{invoiceNumber}</TableCell>
                       <TableCell>
                         <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", statusColors[(inv.status as string)] ?? "bg-secondary")}>
                           {inv.status as string}
@@ -244,13 +257,13 @@ export function BillingPortalSection() {
                       <TableCell className="text-right text-muted-foreground">{creditsApplied > 0 ? `$${creditsApplied.toLocaleString()}` : "—"}</TableCell>
                       <TableCell className="text-right font-medium">${amountDue.toLocaleString()}</TableCell>
                       <TableCell className="text-muted-foreground text-xs">
-                        {inv.issuedAt ? new Date(inv.issuedAt as string).toLocaleDateString() : "—"}
+                        {issuedAt ? new Date(issuedAt).toLocaleDateString() : "—"}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">
-                        {inv.dueAt ? new Date(inv.dueAt as string).toLocaleDateString() : "—"}
+                        {dueAt ? new Date(dueAt).toLocaleDateString() : "—"}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">
-                        {inv.paidAt ? new Date(inv.paidAt as string).toLocaleDateString() : "—"}
+                        {paidAt ? new Date(paidAt).toLocaleDateString() : "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 justify-end">

@@ -10,21 +10,29 @@ function makeHeaders(req: NextRequest, includeJson: boolean) {
   return headers;
 }
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const qs = searchParams.toString();
-  const url = `${BACKEND}/api/billing/payment-methods${qs ? `?${qs}` : ""}`;
-  const res = await fetch(url, { headers: makeHeaders(req, false) });
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const body = await req.text();
+  const res = await fetch(`${BACKEND}/api/billing/tax-rules/${id}`, {
+    method: "PUT",
+    headers: makeHeaders(req, true),
+    body,
+  });
   const data = await res.json();
   return NextResponse.json(data, { status: res.status });
 }
 
-export async function POST(req: NextRequest) {
-  const body = await req.text();
-  const res = await fetch(`${BACKEND}/api/billing/payment-methods`, {
-    method: "POST",
-    headers: makeHeaders(req, true),
-    body,
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const res = await fetch(`${BACKEND}/api/billing/tax-rules/${id}`, {
+    method: "DELETE",
+    headers: makeHeaders(req, false),
   });
   const data = await res.json();
   return NextResponse.json(data, { status: res.status });

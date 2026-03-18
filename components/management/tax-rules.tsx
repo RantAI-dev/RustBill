@@ -15,6 +15,18 @@ import { DeleteDialog } from "./delete-dialog";
 type TaxRule = Record<string, unknown>;
 type DialogMode = "view" | "edit" | "create";
 
+function getTaxName(rule: TaxRule): string {
+  return (rule.taxName as string) ?? (rule.tax_name as string) ?? "";
+}
+
+function getEffectiveFrom(rule: TaxRule): string {
+  const raw = (rule.effectiveFrom as string) ?? (rule.effective_from as string) ?? "";
+  if (!raw) return "-";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString();
+}
+
 const statusConfig: Record<string, { label: string; className: string }> = {
   active: { label: "Active", className: "bg-emerald-500/20 text-emerald-400" },
   inactive: { label: "Inactive", className: "bg-muted-foreground/20 text-muted-foreground" },
@@ -134,7 +146,7 @@ export function TaxRulesManagement() {
 
   const filtered = (taxRules || []).filter((r: TaxRule) =>
     (r.country as string).toLowerCase().includes(search.toLowerCase()) ||
-    (r.taxName as string).toLowerCase().includes(search.toLowerCase()) ||
+    getTaxName(r).toLowerCase().includes(search.toLowerCase()) ||
     ((r.region as string) ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
@@ -213,13 +225,14 @@ export function TaxRulesManagement() {
               <TableHead className="text-right">Rate</TableHead>
               <TableHead>Inclusive</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Effective From</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No tax rules found</TableCell>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No tax rules found</TableCell>
               </TableRow>
             ) : filtered.map((rule: TaxRule) => {
               const status = (rule.active as boolean) ? "active" : "inactive";
@@ -232,7 +245,7 @@ export function TaxRulesManagement() {
                 >
                   <TableCell className="font-medium font-mono">{rule.country as string}</TableCell>
                   <TableCell className="text-muted-foreground">{(rule.region as string) || "—"}</TableCell>
-                  <TableCell>{rule.taxName as string}</TableCell>
+                  <TableCell>{getTaxName(rule)}</TableCell>
                   <TableCell className="text-right font-medium">{((rule.rate as number) * 100).toFixed(2)}%</TableCell>
                   <TableCell>
                     <span className={cn(
@@ -249,6 +262,7 @@ export function TaxRulesManagement() {
                       {config.label}
                     </span>
                   </TableCell>
+                  <TableCell className="text-muted-foreground">{getEffectiveFrom(rule)}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>

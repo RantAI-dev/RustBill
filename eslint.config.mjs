@@ -2,6 +2,14 @@ import nextConfig from "eslint-config-next";
 import tseslint from "typescript-eslint";
 
 const eslintConfig = [
+  {
+    ignores: [
+      "**/.next/**",
+      "**/node_modules/**",
+      ".worktrees/**",
+      "rustbill/target/**",
+    ],
+  },
   ...nextConfig,
   ...tseslint.configs.recommended,
   {
