@@ -1,12 +1,14 @@
 use crate::app::SharedState;
 use crate::routes::ApiResult;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
-use rustbill_core::db::models::{PricingPlan, Subscription};
+use rustbill_core::auth::api_key::ApiKeyInfo;
+use rustbill_core::billing::{credits, payment_methods};
+use rustbill_core::db::models::BillingEventType;
 use rustbill_core::error::BillingError;
 use serde::Deserialize;
 
@@ -14,6 +16,8 @@ pub fn router() -> Router<SharedState> {
     Router::new()
         .nest("/invoices", invoices_router())
         .nest("/subscriptions", subscriptions_router())
+        .nest("/payment-methods", payment_methods_router())
+        .nest("/credits", credits_router())
         .nest("/usage", usage_router())
 }
 
@@ -105,6 +109,212 @@ fn subscriptions_router() -> Router<SharedState> {
         .route("/", get(list_subscriptions).post(create_subscription))
         .route("/{id}", get(get_subscription).put(update_subscription))
         .route("/{id}/change-plan", post(change_plan_v1))
+}
+
+// ---------------------------------------------------------------------------
+// Saved Payment Methods (v1)
+// ---------------------------------------------------------------------------
+
+fn payment_methods_router() -> Router<SharedState> {
+    Router::new()
+        .route("/", get(list_payment_methods_v1).post(create_payment_method_v1))
+        .route("/setup", post(create_payment_method_setup_v1))
+        .route("/{id}", delete(delete_payment_method_v1))
+        .route("/{id}/default", post(set_default_payment_method_v1))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PaymentMethodCustomerQuery {
+    customer_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatePaymentMethodRequestV1 {
+    customer_id: String,
+    provider: rustbill_core::db::models::PaymentProvider,
+    provider_token: String,
+    method_type: rustbill_core::db::models::SavedPaymentMethodType,
+    label: String,
+    last_four: Option<String>,
+    expiry_month: Option<i32>,
+    expiry_year: Option<i32>,
+    #[serde(default)]
+    set_default: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PaymentMethodSetupRequestV1 {
+    customer_id: String,
+    provider: rustbill_core::db::models::PaymentProvider,
+}
+
+async fn list_payment_methods_v1(
+    State(state): State<SharedState>,
+    Extension(api_key): Extension<ApiKeyInfo>,
+    Query(query): Query<PaymentMethodCustomerQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let customer_id = scoped_customer_id(&api_key, query.customer_id.as_deref())?;
+    let methods = payment_methods::list_for_customer(&state.db, &customer_id).await?;
+    Ok(Json(serde_json::to_value(methods).map_err(|e| {
+        BillingError::Internal(e.into())
+    })?))
+}
+
+async fn create_payment_method_v1(
+    State(state): State<SharedState>,
+    Extension(api_key): Extension<ApiKeyInfo>,
+    Json(body): Json<CreatePaymentMethodRequestV1>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let customer_id = scoped_customer_id(&api_key, Some(&body.customer_id))?;
+    let method = payment_methods::create(
+        &state.db,
+        payment_methods::CreatePaymentMethodRequest {
+            customer_id,
+            provider: body.provider,
+            provider_token: body.provider_token,
+            method_type: body.method_type,
+            label: body.label,
+            last_four: body.last_four,
+            expiry_month: body.expiry_month,
+            expiry_year: body.expiry_year,
+            set_default: body.set_default,
+        },
+    )
+    .await?;
+
+    Ok(Json(serde_json::to_value(method).map_err(|e| {
+        BillingError::Internal(e.into())
+    })?))
+}
+
+async fn create_payment_method_setup_v1(
+    Extension(api_key): Extension<ApiKeyInfo>,
+    Query(_query): Query<PaymentMethodCustomerQuery>,
+    Json(body): Json<PaymentMethodSetupRequestV1>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let customer_id = scoped_customer_id(&api_key, Some(&body.customer_id))?;
+    Ok((
+        StatusCode::NOT_IMPLEMENTED,
+        Json(serde_json::json!({
+            "message": "payment method setup session is not implemented yet",
+            "customerId": customer_id,
+            "provider": body.provider,
+        })),
+    ))
+}
+
+async fn delete_payment_method_v1(
+    State(state): State<SharedState>,
+    Extension(api_key): Extension<ApiKeyInfo>,
+    Path(id): Path<String>,
+    Query(query): Query<PaymentMethodCustomerQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let customer_id = resolve_payment_method_customer_id_v1(
+        &state.db,
+        &id,
+        &api_key,
+        query.customer_id,
+    )
+    .await?;
+    payment_methods::remove(&state.db, &customer_id, &id).await?;
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}
+
+async fn set_default_payment_method_v1(
+    State(state): State<SharedState>,
+    Extension(api_key): Extension<ApiKeyInfo>,
+    Path(id): Path<String>,
+    Query(query): Query<PaymentMethodCustomerQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let customer_id = resolve_payment_method_customer_id_v1(
+        &state.db,
+        &id,
+        &api_key,
+        query.customer_id,
+    )
+    .await?;
+    let method = payment_methods::set_default(&state.db, &customer_id, &id).await?;
+    Ok(Json(serde_json::to_value(method).map_err(|e| {
+        BillingError::Internal(e.into())
+    })?))
+}
+
+async fn resolve_payment_method_customer_id_v1(
+    pool: &sqlx::PgPool,
+    method_id: &str,
+    api_key: &ApiKeyInfo,
+    provided_customer_id: Option<String>,
+) -> ApiResult<String> {
+    let scope_customer_id = scoped_customer_id(api_key, provided_customer_id.as_deref())?;
+
+    if let Some(customer_id) = provided_customer_id {
+        return Ok(customer_id);
+    }
+
+    let customer_id = sqlx::query_scalar::<_, String>(
+        "SELECT customer_id FROM saved_payment_methods WHERE id = $1",
+    )
+    .bind(method_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(BillingError::from)?
+    .ok_or_else(|| BillingError::not_found("payment_method", method_id))?;
+
+    if customer_id != scope_customer_id {
+        return Err(BillingError::Forbidden.into());
+    }
+
+    Ok(customer_id)
+}
+
+// ---------------------------------------------------------------------------
+// Credits (v1)
+// ---------------------------------------------------------------------------
+
+fn credits_router() -> Router<SharedState> {
+    Router::new().route("/", get(get_credits_v1))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreditsQueryV1 {
+    customer_id: Option<String>,
+    currency: Option<String>,
+}
+
+async fn get_credits_v1(
+    State(state): State<SharedState>,
+    Extension(api_key): Extension<ApiKeyInfo>,
+    Query(query): Query<CreditsQueryV1>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let customer_id = scoped_customer_id(&api_key, query.customer_id.as_deref())?;
+    let currency = query.currency.as_deref().unwrap_or("USD");
+    let balance = credits::get_balance(&state.db, &customer_id, currency).await?;
+    let history = credits::list_credits(&state.db, &customer_id, query.currency.as_deref()).await?;
+
+    Ok(Json(serde_json::json!({
+        "balance": balance,
+        "currency": currency,
+        "history": history,
+    })))
+}
+
+fn scoped_customer_id(api_key: &ApiKeyInfo, requested: Option<&str>) -> ApiResult<String> {
+    let scoped = api_key
+        .customer_id
+        .as_deref()
+        .ok_or(BillingError::Forbidden)?;
+
+    if let Some(requested) = requested {
+        if requested != scoped {
+            return Err(BillingError::Forbidden.into());
+        }
+    }
+
+    Ok(scoped.to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -295,128 +505,42 @@ async fn change_plan_v1(
     Path(id): Path<String>,
     Json(body): Json<ChangePlanRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let now = chrono::Utc::now().naive_utc();
-
-    // Fetch subscription
-    let sub: Subscription = sqlx::query_as(
-        "SELECT * FROM subscriptions WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(BillingError::from)?
-    .ok_or_else(|| BillingError::not_found("subscription", &id))?;
-
-    // Idempotency check
-    if let Some(ref key) = body.idempotency_key {
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM invoices WHERE idempotency_key = $1",
-        )
-        .bind(key)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(BillingError::from)?;
-        if existing.is_some() {
-            return Ok(Json(serde_json::json!({"message": "already processed"})));
-        }
-    }
-
-    let old_plan: PricingPlan = sqlx::query_as(
-        "SELECT * FROM pricing_plans WHERE id = $1",
-    )
-    .bind(&sub.plan_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(BillingError::from)?;
-
-    let new_plan: PricingPlan = sqlx::query_as(
-        "SELECT * FROM pricing_plans WHERE id = $1",
-    )
-    .bind(&body.plan_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(BillingError::from)?;
-
-    let new_quantity = body.quantity.unwrap_or(sub.quantity);
-
-    // Calculate proration
-    let proration = rustbill_core::billing::proration::calculate_proration(
-        &old_plan,
-        &new_plan,
-        sub.quantity,
-        new_quantity,
-        sub.current_period_start,
-        sub.current_period_end,
-        now,
-    )?;
-
-    // Handle financial result — downgrade deposits credit
-    if proration.net < rust_decimal::Decimal::ZERO {
-        let currency: String = sqlx::query_scalar(
-            "SELECT currency FROM invoices WHERE subscription_id = $1 ORDER BY created_at DESC LIMIT 1",
-        )
-        .bind(&id)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(BillingError::from)?
-        .unwrap_or_else(|| "USD".to_string());
-
-        rustbill_core::billing::credits::deposit(
-            &state.db,
-            &sub.customer_id,
-            &currency,
-            proration.net.abs(),
-            rustbill_core::db::models::CreditReason::Proration,
-            &format!("Proration credit: {} → {}", old_plan.name, new_plan.name),
-            None,
-        )
-        .await?;
-    }
-
-    // Update subscription plan with optimistic concurrency via version check
-    let rows = sqlx::query(
-        r#"UPDATE subscriptions
-           SET plan_id = $2, quantity = $3, version = version + 1, updated_at = NOW()
-           WHERE id = $1 AND version = $4"#,
-    )
-    .bind(&id)
-    .bind(&body.plan_id)
-    .bind(new_quantity)
-    .bind(sub.version)
-    .execute(&state.db)
-    .await
-    .map_err(BillingError::from)?;
-
-    if rows.rows_affected() == 0 {
-        return Err(BillingError::conflict(
-            "subscription was modified concurrently; retry the request",
-        )
-        .into());
-    }
-
-    // Emit event (best-effort)
-    let _ = rustbill_core::notifications::events::emit_billing_event(
+    let result = rustbill_core::billing::plan_change::change_plan_with_proration(
         &state.db,
-        &state.http_client,
-        rustbill_core::db::models::BillingEventType::SubscriptionPlanChanged,
-        "subscription",
-        &id,
-        Some(&sub.customer_id),
-        Some(serde_json::json!({
-            "old_plan": old_plan.name,
-            "new_plan": new_plan.name,
-            "proration_net": proration.net.to_string(),
-        })),
+        rustbill_core::billing::plan_change::ChangePlanInput {
+            subscription_id: &id,
+            new_plan_id: &body.plan_id,
+            new_quantity: body.quantity,
+            idempotency_key: body.idempotency_key.as_deref(),
+            now: chrono::Utc::now().naive_utc(),
+        },
     )
-    .await;
-
-    let updated: serde_json::Value = sqlx::query_scalar(
-        "SELECT to_jsonb(s) FROM subscriptions s WHERE s.id = $1",
-    )
-    .bind(&id)
-    .fetch_one(&state.db)
     .await
     .map_err(BillingError::from)?;
 
-    Ok(Json(updated))
+    if !result.already_processed {
+        let _ = rustbill_core::notifications::events::emit_billing_event(
+            &state.db,
+            &state.http_client,
+            BillingEventType::SubscriptionPlanChanged,
+            "subscription",
+            &id,
+            Some(&result.customer_id),
+            Some(serde_json::json!({
+                "old_plan": result.old_plan_name,
+                "new_plan": result.new_plan_name,
+                "proration_net": result.proration_net.to_string(),
+            })),
+        )
+        .await;
+    }
+
+    let payload = if result.already_processed {
+        serde_json::to_value(result.invoice)
+    } else {
+        serde_json::to_value(result.subscription)
+    }
+    .map_err(|e| BillingError::Internal(e.into()))?;
+
+    Ok(Json(payload))
 }

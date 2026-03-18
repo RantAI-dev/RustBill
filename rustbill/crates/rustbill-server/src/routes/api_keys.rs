@@ -35,17 +35,19 @@ async fn create(
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let name = body["name"].as_str().unwrap_or("default");
+    let customer_id = body["customerId"].as_str();
 
     // Generate a random API key
     let key_plain = rustbill_core::auth::generate_api_key();
     let hashed = rustbill_core::auth::hash_api_key(&key_plain);
 
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, now())
+        r#"INSERT INTO api_keys (id, name, customer_id, key_prefix, key_hash, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, now())
            RETURNING to_jsonb(api_keys.*) - 'key_hash'"#,
     )
     .bind(name)
+    .bind(customer_id)
     .bind(&key_plain[..12])
     .bind(&hashed)
     .fetch_one(&state.db)

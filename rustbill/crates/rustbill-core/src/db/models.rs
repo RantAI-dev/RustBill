@@ -444,6 +444,7 @@ pub struct LicenseActivation {
 pub struct ApiKey {
     pub id: String,
     pub name: String,
+    pub customer_id: Option<String>,
     pub key_hash: String,
     pub key_prefix: String,
     pub status: ApiKeyStatus,

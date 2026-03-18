@@ -210,6 +210,14 @@ pub async fn create_test_invoice(pool: &PgPool, customer_id: &str) -> String {
 
 /// Insert a test API key. Returns `(id, plaintext_key)`.
 pub async fn create_test_api_key(pool: &PgPool) -> (String, String) {
+    create_test_api_key_for_customer(pool, None).await
+}
+
+/// Insert a test API key scoped to an optional customer. Returns `(id, plaintext_key)`.
+pub async fn create_test_api_key_for_customer(
+    pool: &PgPool,
+    customer_id: Option<&str>,
+) -> (String, String) {
     let id = uuid::Uuid::new_v4().to_string();
     let plaintext_key = generate_api_key();
     let key_hash = hash_api_key(&plaintext_key);
@@ -218,11 +226,12 @@ pub async fn create_test_api_key(pool: &PgPool) -> (String, String) {
 
     sqlx::query(
         r#"INSERT INTO api_keys
-           (id, name, key_hash, key_prefix, status, created_at)
-           VALUES ($1, $2, $3, $4, 'active'::api_key_status, $5)"#,
+           (id, name, customer_id, key_hash, key_prefix, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'active'::api_key_status, $6)"#,
     )
     .bind(&id)
     .bind(format!("Test Key {}", &id[..8]))
+    .bind(customer_id)
     .bind(&key_hash)
     .bind(&key_prefix)
     .bind(now)

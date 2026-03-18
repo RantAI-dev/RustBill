@@ -2,9 +2,10 @@ mod common;
 
 use axum::http::{HeaderName, HeaderValue};
 use common::{
-    create_test_api_key, create_test_customer, create_test_plan, create_test_product,
+    create_test_api_key, create_test_api_key_for_customer, create_test_customer, create_test_plan, create_test_product,
     create_test_subscription, test_server,
 };
+use rust_decimal::Decimal;
 use sqlx::PgPool;
 
 // -----------------------------------------------------------------------
@@ -228,4 +229,58 @@ async fn v1_usage_batch_post(pool: PgPool) {
     resp.assert_status_ok();
     let all_usage: Vec<serde_json::Value> = resp.json();
     assert_eq!(all_usage.len(), 3, "expected 3 persisted usage records");
+}
+
+// -----------------------------------------------------------------------
+// Test 6: V1 billing credits requires customer-scoped API key
+// -----------------------------------------------------------------------
+#[sqlx::test(migrations = "../../migrations")]
+async fn v1_billing_credits_requires_scoped_key(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let (_id, key) = create_test_api_key(&pool).await; // unscoped
+
+    let resp = server
+        .get("/api/v1/billing/credits")
+        .add_header(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_str(&format!("Bearer {}", key)).unwrap(),
+        )
+        .await;
+
+    resp.assert_status(axum::http::StatusCode::FORBIDDEN);
+}
+
+// -----------------------------------------------------------------------
+// Test 7: V1 billing credits uses customer scope from API key
+// -----------------------------------------------------------------------
+#[sqlx::test(migrations = "../../migrations")]
+async fn v1_billing_credits_scoped_key_reads_own_customer(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let customer_id = create_test_customer(&pool).await;
+    let (_id, key) = create_test_api_key_for_customer(&pool, Some(&customer_id)).await;
+
+    rustbill_core::billing::credits::deposit(
+        &pool,
+        &customer_id,
+        "USD",
+        Decimal::new(750, 2),
+        rustbill_core::db::models::CreditReason::Manual,
+        "seed",
+        None,
+    )
+    .await
+    .unwrap();
+
+    let resp = server
+        .get("/api/v1/billing/credits")
+        .add_header(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_str(&format!("Bearer {}", key)).unwrap(),
+        )
+        .await;
+
+    resp.assert_status_ok();
+    let body: serde_json::Value = resp.json();
+    assert_eq!(body["currency"], "USD");
+    assert_eq!(body["balance"], "7.50");
 }

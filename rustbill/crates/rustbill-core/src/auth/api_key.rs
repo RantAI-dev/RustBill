@@ -34,11 +34,12 @@ pub fn get_key_prefix(key: &str) -> String {
 pub async fn verify_api_key(pool: &PgPool, key: &str) -> crate::error::Result<Option<ApiKeyInfo>> {
     let key_hash = hash_api_key(key);
 
-    let row =
-        sqlx::query_as::<_, ApiKeyRow>("SELECT id, name, status::text FROM api_keys WHERE key_hash = $1")
-            .bind(&key_hash)
-            .fetch_optional(pool)
-            .await?;
+    let row = sqlx::query_as::<_, ApiKeyRow>(
+        "SELECT id, name, customer_id, status::text FROM api_keys WHERE key_hash = $1",
+    )
+    .bind(&key_hash)
+    .fetch_optional(pool)
+    .await?;
 
     match row {
         Some(r) if r.status == "active" => {
@@ -55,6 +56,7 @@ pub async fn verify_api_key(pool: &PgPool, key: &str) -> crate::error::Result<Op
             Ok(Some(ApiKeyInfo {
                 id: r.id,
                 name: r.name,
+                customer_id: r.customer_id,
             }))
         }
         _ => Ok(None),
@@ -65,12 +67,14 @@ pub async fn verify_api_key(pool: &PgPool, key: &str) -> crate::error::Result<Op
 pub struct ApiKeyInfo {
     pub id: String,
     pub name: String,
+    pub customer_id: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
 struct ApiKeyRow {
     id: String,
     name: String,
+    customer_id: Option<String>,
     status: String,
 }
 
