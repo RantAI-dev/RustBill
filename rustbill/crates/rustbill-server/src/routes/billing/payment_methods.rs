@@ -20,7 +20,7 @@ pub fn router() -> Router<SharedState> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CustomerQuery {
-    customer_id: String,
+    customer_id: Option<String>,
 }
 
 async fn list(
@@ -28,7 +28,10 @@ async fn list(
     _user: AdminUser,
     Query(query): Query<CustomerQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let methods = payment_methods::list_for_customer(&state.db, &query.customer_id).await?;
+    let customer_id = query
+        .customer_id
+        .ok_or_else(|| rustbill_core::error::BillingError::bad_request("customerId is required"))?;
+    let methods = payment_methods::list_for_customer(&state.db, &customer_id).await?;
     Ok(Json(serde_json::to_value(methods).map_err(|e| {
         rustbill_core::error::BillingError::Internal(e.into())
     })?))
@@ -80,7 +83,8 @@ async fn remove(
     Path(id): Path<String>,
     Query(query): Query<CustomerQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    payment_methods::remove(&state.db, &query.customer_id, &id).await?;
+    let customer_id = resolve_customer_id(&state.db, &id, query.customer_id.as_deref()).await?;
+    payment_methods::remove(&state.db, &customer_id, &id).await?;
     Ok(Json(serde_json::json!({"deleted": true})))
 }
 
@@ -90,8 +94,30 @@ async fn set_default(
     Path(id): Path<String>,
     Query(query): Query<CustomerQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let method = payment_methods::set_default(&state.db, &query.customer_id, &id).await?;
+    let customer_id = resolve_customer_id(&state.db, &id, query.customer_id.as_deref()).await?;
+    let method = payment_methods::set_default(&state.db, &customer_id, &id).await?;
     Ok(Json(serde_json::to_value(method).map_err(|e| {
         rustbill_core::error::BillingError::Internal(e.into())
     })?))
+}
+
+async fn resolve_customer_id(
+    pool: &sqlx::PgPool,
+    method_id: &str,
+    provided: Option<&str>,
+) -> ApiResult<String> {
+    if let Some(customer_id) = provided {
+        return Ok(customer_id.to_string());
+    }
+
+    let customer_id = sqlx::query_scalar::<_, String>(
+        "SELECT customer_id FROM saved_payment_methods WHERE id = $1",
+    )
+    .bind(method_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?
+    .ok_or_else(|| rustbill_core::error::BillingError::not_found("payment_method", method_id))?;
+
+    Ok(customer_id)
 }

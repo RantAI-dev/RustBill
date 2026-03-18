@@ -16,23 +16,46 @@ pub async fn get_balance(pool: &PgPool, customer_id: &str, currency: &str) -> Re
     Ok(row.map(|r| r.balance).unwrap_or(Decimal::ZERO))
 }
 
-pub async fn deposit<'e, E>(
-    executor: E,
+pub async fn deposit(
+    pool: &PgPool,
     customer_id: &str,
     currency: &str,
     amount: Decimal,
     reason: CreditReason,
     description: &str,
     invoice_id: Option<&str>,
-) -> Result<CustomerCredit>
-where
-    E: sqlx::Acquire<'e, Database = Postgres>,
-{
+) -> Result<CustomerCredit> {
     if amount <= Decimal::ZERO {
         return Err(BillingError::bad_request("deposit amount must be positive"));
     }
 
-    let mut conn = executor.acquire().await?;
+    let mut tx = pool.begin().await?;
+    let credit = deposit_in_tx(
+        &mut tx,
+        customer_id,
+        currency,
+        amount,
+        reason,
+        description,
+        invoice_id,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(credit)
+}
+
+pub async fn deposit_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    customer_id: &str,
+    currency: &str,
+    amount: Decimal,
+    reason: CreditReason,
+    description: &str,
+    invoice_id: Option<&str>,
+) -> Result<CustomerCredit> {
+    if amount <= Decimal::ZERO {
+        return Err(BillingError::bad_request("deposit amount must be positive"));
+    }
 
     let balance_row: CustomerCreditBalance = sqlx::query_as(
         r#"INSERT INTO customer_credit_balances (customer_id, currency, balance, updated_at)
@@ -44,7 +67,7 @@ where
     .bind(customer_id)
     .bind(currency)
     .bind(amount)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut **tx)
     .await?;
 
     let credit = sqlx::query_as::<_, CustomerCredit>(
@@ -59,7 +82,7 @@ where
     .bind(reason)
     .bind(description)
     .bind(invoice_id)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut **tx)
     .await?;
 
     Ok(credit)
@@ -91,22 +114,21 @@ pub async fn apply_to_invoice(
 
     let apply_amount = max_amount.min(balance);
 
-    sqlx::query(
-        "UPDATE customer_credit_balances SET balance = balance - $3, updated_at = NOW() WHERE customer_id = $1 AND currency = $2",
+    let new_balance: Option<Decimal> = sqlx::query_scalar(
+        "UPDATE customer_credit_balances
+         SET balance = balance - $3, updated_at = NOW()
+         WHERE customer_id = $1 AND currency = $2 AND balance >= $3
+         RETURNING balance",
     )
     .bind(customer_id)
     .bind(currency)
     .bind(apply_amount)
-    .execute(&mut **tx)
+    .fetch_optional(&mut **tx)
     .await?;
 
-    let new_balance: Decimal = sqlx::query_scalar(
-        "SELECT balance FROM customer_credit_balances WHERE customer_id = $1 AND currency = $2",
-    )
-    .bind(customer_id)
-    .bind(currency)
-    .fetch_one(&mut **tx)
-    .await?;
+    let Some(new_balance) = new_balance else {
+        return Ok(Decimal::ZERO);
+    };
 
     sqlx::query(
         r#"INSERT INTO customer_credits (id, customer_id, currency, amount, balance_after, reason, description, invoice_id, created_at)

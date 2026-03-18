@@ -223,3 +223,47 @@ async fn test_overpayment_deposits_credit(pool: PgPool) {
         "expected $20.00 credit from overpayment"
     );
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_change_plan_idempotency_returns_existing_invoice(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+    let (_customer_id, _cheap_id, expensive_id, sub_id) = setup(&server, &pool, &token).await;
+
+    let key = "idem-plan-change-001";
+
+    // First request creates proration invoice for upgrade.
+    let resp = server
+        .post(&format!("/api/billing/subscriptions/{sub_id}/change-plan"))
+        .json(&serde_json::json!({
+            "planId": expensive_id,
+            "idempotencyKey": key
+        }))
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+
+    // Second request with same key should return existing invoice payload.
+    let resp = server
+        .post(&format!("/api/billing/subscriptions/{sub_id}/change-plan"))
+        .json(&serde_json::json!({
+            "planId": expensive_id,
+            "idempotencyKey": key
+        }))
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+    let body: serde_json::Value = resp.json();
+    assert!(body["id"].is_string());
+    assert_eq!(body["idempotency_key"], key);
+
+    let invoice_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM invoices WHERE subscription_id = $1 AND idempotency_key = $2",
+    )
+    .bind(&sub_id)
+    .bind(key)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(invoice_count, 1);
+}

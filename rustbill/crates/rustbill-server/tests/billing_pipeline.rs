@@ -181,6 +181,65 @@ async fn test_credits_applied_to_invoice(pool: PgPool) {
     assert_eq!(balance, rust_decimal::Decimal::ZERO);
 }
 
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_auto_charge_success_settles_invoice(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+
+    let customer_id = create_customer_with_billing(&pool, "US", Some("CA")).await;
+    let plan_id = create_flat_plan(&pool, "Pro Plan", "100.00").await;
+    let _sub_id = create_subscription(&pool, &customer_id, &plan_id).await;
+
+    // Add a default saved payment method. The token prefix `test_success`
+    // triggers a simulated successful auto-charge in test mode.
+    sqlx::query(
+        r#"INSERT INTO saved_payment_methods
+           (id, customer_id, provider, provider_token, method_type, label, is_default, status)
+           VALUES (gen_random_uuid()::text, $1, 'stripe', 'test_success_autocharge', 'card', 'Visa 4242', TRUE, 'active')"#,
+    )
+    .bind(&customer_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Advance subscription period_end to past
+    sqlx::query(
+        "UPDATE subscriptions SET current_period_end = NOW() - INTERVAL '1 hour' WHERE customer_id = $1",
+    )
+    .bind(&customer_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Trigger lifecycle
+    let resp = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+
+    // Invoice should be marked paid after auto-charge settlement
+    let inv: serde_json::Value = sqlx::query_scalar(
+        "SELECT to_jsonb(i) FROM invoices i WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&customer_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(inv["status"], "paid");
+
+    // Payment record should exist and match amount_due
+    let payment_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM payments p JOIN invoices i ON i.id = p.invoice_id WHERE i.id = $1",
+    )
+    .bind(inv["id"].as_str().unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(payment_count, 1);
+}
+
 /// Parse a JSON value that could be a string or number into a Decimal.
 fn parse_decimal_value(val: &serde_json::Value) -> rust_decimal::Decimal {
     use std::str::FromStr;

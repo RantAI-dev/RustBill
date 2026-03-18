@@ -411,7 +411,25 @@ async fn renew_single_subscription(
                 .await
                 {
                     Ok(crate::billing::auto_charge::ChargeResult::Success) => {
-                        tracing::info!("Auto-charge succeeded for invoice {}", invoice_id);
+                        match settle_auto_charge_success(
+                            pool,
+                            http_client,
+                            &committed_invoice,
+                            &payment_method,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                tracing::info!("Auto-charge settled invoice {}", invoice_id);
+                            }
+                            Err(err) => {
+                                tracing::error!(
+                                    "Auto-charge payment settlement failed for invoice {}: {}",
+                                    invoice_id,
+                                    err
+                                );
+                            }
+                        }
                     }
                     Ok(crate::billing::auto_charge::ChargeResult::PermanentFailure(reason)) => {
                         tracing::warn!(
@@ -571,5 +589,110 @@ fn format_cycle(cycle: &BillingCycle) -> &'static str {
         BillingCycle::Monthly => "Monthly",
         BillingCycle::Quarterly => "Quarterly",
         BillingCycle::Yearly => "Yearly",
+    }
+}
+
+async fn settle_auto_charge_success(
+    pool: &PgPool,
+    http_client: &reqwest::Client,
+    invoice: &Invoice,
+    payment_method: &SavedPaymentMethod,
+) -> Result<()> {
+    let method = match payment_method.provider {
+        PaymentProvider::Stripe => PaymentMethod::Stripe,
+        PaymentProvider::Xendit => PaymentMethod::Xendit,
+        PaymentProvider::Lemonsqueezy => PaymentMethod::Lemonsqueezy,
+    };
+
+    let mut tx = pool.begin().await?;
+
+    let locked_invoice: Invoice = sqlx::query_as("SELECT * FROM invoices WHERE id = $1 FOR UPDATE")
+        .bind(&invoice.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    if locked_invoice.status == InvoiceStatus::Paid {
+        tracing::info!(
+            invoice_id = %invoice.id,
+            "Auto-charge settlement skipped because invoice is already paid"
+        );
+        tx.commit().await?;
+        return Ok(());
+    }
+
+    let paid_at = Utc::now().naive_utc();
+    let payment: Payment = sqlx::query_as(
+        r#"
+        INSERT INTO payments
+            (id, invoice_id, amount, method, reference, paid_at, notes,
+             stripe_payment_intent_id, xendit_payment_id, lemonsqueezy_order_id)
+        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NULL, NULL, NULL)
+        RETURNING *
+        "#,
+    )
+    .bind(&locked_invoice.id)
+    .bind(locked_invoice.amount_due)
+    .bind(&method)
+    .bind(format!(
+        "auto-charge:{}:{}",
+        provider_name(&payment_method.provider),
+        payment_method.id
+    ))
+    .bind(paid_at)
+    .bind("Auto-charge via saved payment method")
+    .fetch_one(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "UPDATE invoices SET status = 'paid', paid_at = $2, version = version + 1, updated_at = NOW() WHERE id = $1",
+    )
+    .bind(&locked_invoice.id)
+    .bind(paid_at)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let payment_amount = payment.amount.to_string();
+    let _ = crate::notifications::emit_billing_event(
+        pool,
+        http_client,
+        BillingEventType::PaymentReceived,
+        "payment",
+        &payment.id,
+        Some(&locked_invoice.customer_id),
+        Some(serde_json::json!({
+            "invoice_id": locked_invoice.id,
+            "invoice_number": locked_invoice.invoice_number,
+            "amount": payment_amount,
+            "method": provider_name(&payment_method.provider),
+            "auto_charge": true,
+        })),
+    )
+    .await;
+
+    let _ = crate::notifications::emit_billing_event(
+        pool,
+        http_client,
+        BillingEventType::InvoicePaid,
+        "invoice",
+        &locked_invoice.id,
+        Some(&locked_invoice.customer_id),
+        Some(serde_json::json!({
+            "invoice_number": locked_invoice.invoice_number,
+            "amount_due": locked_invoice.amount_due.to_string(),
+            "auto_charge": true,
+        })),
+    )
+    .await;
+
+    Ok(())
+}
+
+fn provider_name(provider: &PaymentProvider) -> &'static str {
+    match provider {
+        PaymentProvider::Stripe => "stripe",
+        PaymentProvider::Xendit => "xendit",
+        PaymentProvider::Lemonsqueezy => "lemonsqueezy",
     }
 }

@@ -9,6 +9,7 @@ pub mod invoices;
 pub mod lifecycle;
 pub mod payment_methods;
 pub mod payments;
+pub mod plan_change;
 pub mod plans;
 pub mod proration;
 pub mod refunds;

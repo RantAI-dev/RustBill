@@ -189,8 +189,8 @@ async fn create_payment_inner(
         // Deposit overpayment as credit to customer wallet
         if net_paid > invoice.amount_due {
             let excess = net_paid - invoice.amount_due;
-            if let Err(e) = crate::billing::credits::deposit(
-                &mut *tx,
+            if let Err(e) = crate::billing::credits::deposit_in_tx(
+                &mut tx,
                 &invoice.customer_id,
                 &invoice.currency,
                 excess,

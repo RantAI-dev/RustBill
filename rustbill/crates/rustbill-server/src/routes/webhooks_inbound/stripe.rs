@@ -12,16 +12,7 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 pub fn router() -> Router<SharedState> {
-    // TODO: restore handle_webhook once axum Handler trait issue is resolved
-    // (the full handler's async future doesn't satisfy Send bound)
-    Router::new().route("/", post(handle_webhook_stub))
-}
-
-async fn handle_webhook_stub(
-    State(_state): State<SharedState>,
-) -> StatusCode {
-    tracing::warn!("Stripe webhook handler is currently stubbed out");
-    StatusCode::OK
+    Router::new().route("/", post(handle_webhook))
 }
 
 /// Parse the Stripe-Signature header into (timestamp, signature_hex).

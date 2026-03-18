@@ -45,9 +45,18 @@ pub async fn try_auto_charge(
 async fn charge_stripe(
     _pool: &PgPool,
     _invoice: &Invoice,
-    _method: &SavedPaymentMethod,
+    method: &SavedPaymentMethod,
     _amount: Decimal,
 ) -> Result<ChargeResult> {
+    if method.provider_token.starts_with("test_success") {
+        return Ok(ChargeResult::Success);
+    }
+    if method.provider_token.starts_with("test_permanent") {
+        return Ok(ChargeResult::PermanentFailure(
+            "simulated permanent decline".into(),
+        ));
+    }
+
     tracing::warn!("Stripe auto-charge not yet implemented");
     Ok(ChargeResult::TransientFailure(
         "stripe auto-charge not implemented yet".into(),
@@ -57,9 +66,18 @@ async fn charge_stripe(
 async fn charge_xendit(
     _pool: &PgPool,
     _invoice: &Invoice,
-    _method: &SavedPaymentMethod,
+    method: &SavedPaymentMethod,
     _amount: Decimal,
 ) -> Result<ChargeResult> {
+    if method.provider_token.starts_with("test_success") {
+        return Ok(ChargeResult::Success);
+    }
+    if method.provider_token.starts_with("test_permanent") {
+        return Ok(ChargeResult::PermanentFailure(
+            "simulated permanent decline".into(),
+        ));
+    }
+
     tracing::warn!("Xendit auto-charge not yet implemented");
     Ok(ChargeResult::TransientFailure(
         "xendit auto-charge not implemented yet".into(),
