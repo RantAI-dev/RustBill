@@ -95,10 +95,11 @@ pub async fn change_plan_with_proration(
     let mut created_invoice: Option<Invoice> = None;
 
     if proration.net > Decimal::ZERO {
-        let invoice_number: String =
-            sqlx::query_scalar("SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')")
-                .fetch_one(&mut *tx)
-                .await?;
+        let invoice_number: String = sqlx::query_scalar(
+            "SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
         let due_at = input.now + chrono::Duration::days(30);
         let invoice = sqlx::query_as::<_, Invoice>(

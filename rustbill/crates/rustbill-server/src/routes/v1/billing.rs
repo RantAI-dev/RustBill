@@ -117,7 +117,10 @@ fn subscriptions_router() -> Router<SharedState> {
 
 fn payment_methods_router() -> Router<SharedState> {
     Router::new()
-        .route("/", get(list_payment_methods_v1).post(create_payment_method_v1))
+        .route(
+            "/",
+            get(list_payment_methods_v1).post(create_payment_method_v1),
+        )
         .route("/setup", post(create_payment_method_setup_v1))
         .route("/{id}", delete(delete_payment_method_v1))
         .route("/{id}/default", post(set_default_payment_method_v1))
@@ -158,9 +161,9 @@ async fn list_payment_methods_v1(
 ) -> ApiResult<Json<serde_json::Value>> {
     let customer_id = scoped_customer_id(&api_key, query.customer_id.as_deref())?;
     let methods = payment_methods::list_for_customer(&state.db, &customer_id).await?;
-    Ok(Json(serde_json::to_value(methods).map_err(|e| {
-        BillingError::Internal(e.into())
-    })?))
+    Ok(Json(
+        serde_json::to_value(methods).map_err(|e| BillingError::Internal(e.into()))?,
+    ))
 }
 
 async fn create_payment_method_v1(
@@ -185,9 +188,9 @@ async fn create_payment_method_v1(
     )
     .await?;
 
-    Ok(Json(serde_json::to_value(method).map_err(|e| {
-        BillingError::Internal(e.into())
-    })?))
+    Ok(Json(
+        serde_json::to_value(method).map_err(|e| BillingError::Internal(e.into()))?,
+    ))
 }
 
 async fn create_payment_method_setup_v1(
@@ -212,13 +215,8 @@ async fn delete_payment_method_v1(
     Path(id): Path<String>,
     Query(query): Query<PaymentMethodCustomerQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let customer_id = resolve_payment_method_customer_id_v1(
-        &state.db,
-        &id,
-        &api_key,
-        query.customer_id,
-    )
-    .await?;
+    let customer_id =
+        resolve_payment_method_customer_id_v1(&state.db, &id, &api_key, query.customer_id).await?;
     payment_methods::remove(&state.db, &customer_id, &id).await?;
     Ok(Json(serde_json::json!({ "deleted": true })))
 }
@@ -229,17 +227,12 @@ async fn set_default_payment_method_v1(
     Path(id): Path<String>,
     Query(query): Query<PaymentMethodCustomerQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let customer_id = resolve_payment_method_customer_id_v1(
-        &state.db,
-        &id,
-        &api_key,
-        query.customer_id,
-    )
-    .await?;
+    let customer_id =
+        resolve_payment_method_customer_id_v1(&state.db, &id, &api_key, query.customer_id).await?;
     let method = payment_methods::set_default(&state.db, &customer_id, &id).await?;
-    Ok(Json(serde_json::to_value(method).map_err(|e| {
-        BillingError::Internal(e.into())
-    })?))
+    Ok(Json(
+        serde_json::to_value(method).map_err(|e| BillingError::Internal(e.into()))?,
+    ))
 }
 
 async fn resolve_payment_method_customer_id_v1(

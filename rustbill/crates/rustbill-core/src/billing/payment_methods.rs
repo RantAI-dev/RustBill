@@ -16,10 +16,7 @@ pub async fn list_for_customer(
     Ok(methods)
 }
 
-pub async fn get_default(
-    pool: &PgPool,
-    customer_id: &str,
-) -> Result<Option<SavedPaymentMethod>> {
+pub async fn get_default(pool: &PgPool, customer_id: &str) -> Result<Option<SavedPaymentMethod>> {
     let method = sqlx::query_as::<_, SavedPaymentMethod>(
         "SELECT * FROM saved_payment_methods WHERE customer_id = $1 AND is_default = TRUE AND status = 'active'",
     )
@@ -41,10 +38,7 @@ pub struct CreatePaymentMethodRequest {
     pub set_default: bool,
 }
 
-pub async fn create(
-    pool: &PgPool,
-    req: CreatePaymentMethodRequest,
-) -> Result<SavedPaymentMethod> {
+pub async fn create(pool: &PgPool, req: CreatePaymentMethodRequest) -> Result<SavedPaymentMethod> {
     let mut tx = pool.begin().await?;
 
     if req.set_default {
@@ -114,13 +108,12 @@ pub async fn set_default(
 }
 
 pub async fn remove(pool: &PgPool, customer_id: &str, method_id: &str) -> Result<()> {
-    let result = sqlx::query(
-        "DELETE FROM saved_payment_methods WHERE id = $1 AND customer_id = $2",
-    )
-    .bind(method_id)
-    .bind(customer_id)
-    .execute(pool)
-    .await?;
+    let result =
+        sqlx::query("DELETE FROM saved_payment_methods WHERE id = $1 AND customer_id = $2")
+            .bind(method_id)
+            .bind(customer_id)
+            .execute(pool)
+            .await?;
 
     if result.rows_affected() == 0 {
         return Err(BillingError::not_found("payment_method", method_id));

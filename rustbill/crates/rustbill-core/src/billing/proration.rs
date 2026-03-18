@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
-use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
+use rust_decimal::Decimal;
 
 use crate::db::models::{PricingModel, PricingPlan};
 use crate::error::{BillingError, Result};
@@ -42,11 +42,12 @@ pub fn calculate_proration(
 
     let total_seconds = (period_end - period_start).num_seconds() as f64;
     if total_seconds <= 0.0 {
-        return Err(BillingError::bad_request("invalid period: end must be after start"));
+        return Err(BillingError::bad_request(
+            "invalid period: end must be after start",
+        ));
     }
     let remaining_seconds = (period_end - now).num_seconds().max(0) as f64;
-    let ratio = Decimal::from_f64(remaining_seconds / total_seconds)
-        .unwrap_or(Decimal::ZERO);
+    let ratio = Decimal::from_f64(remaining_seconds / total_seconds).unwrap_or(Decimal::ZERO);
 
     let old_amount = plan_amount(old_plan, old_quantity);
     let new_amount = plan_amount(new_plan, new_quantity);
@@ -89,17 +90,18 @@ fn plan_amount(plan: &PricingPlan, quantity: i32) -> Decimal {
         PricingModel::PerUnit => {
             plan.unit_price.unwrap_or(plan.base_price) * Decimal::from(quantity)
         }
-        PricingModel::Tiered => {
-            crate::billing::tiered_pricing::calculate_amount(
-                &plan.pricing_model,
-                plan.base_price,
-                plan.unit_price,
-                plan.tiers.as_ref().and_then(|t| {
+        PricingModel::Tiered => crate::billing::tiered_pricing::calculate_amount(
+            &plan.pricing_model,
+            plan.base_price,
+            plan.unit_price,
+            plan.tiers
+                .as_ref()
+                .and_then(|t| {
                     serde_json::from_value::<Vec<crate::db::models::PricingTier>>(t.clone()).ok()
-                }).as_deref(),
-                quantity,
-            )
-        }
+                })
+                .as_deref(),
+            quantity,
+        ),
         PricingModel::UsageBased => Decimal::ZERO,
     }
 }
@@ -123,8 +125,14 @@ mod tests {
             usage_metric_name: None,
             trial_days: 0,
             active: true,
-            created_at: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap(),
-            updated_at: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap(),
+            created_at: NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+            updated_at: NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
         }
     }
 
@@ -132,9 +140,18 @@ mod tests {
     fn test_upgrade_mid_cycle() {
         let old = make_plan("Pro", PricingModel::Flat, 100.0, None);
         let new = make_plan("Enterprise", PricingModel::Flat, 200.0, None);
-        let start = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let end = NaiveDate::from_ymd_opt(2026, 3, 31).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let now = NaiveDate::from_ymd_opt(2026, 3, 16).unwrap().and_hms_opt(0, 0, 0).unwrap();
+        let start = NaiveDate::from_ymd_opt(2026, 3, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let end = NaiveDate::from_ymd_opt(2026, 3, 31)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let now = NaiveDate::from_ymd_opt(2026, 3, 16)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
 
         let result = calculate_proration(&old, &new, 1, 1, start, end, now).unwrap();
         assert!(result.net > Decimal::ZERO);
@@ -147,9 +164,18 @@ mod tests {
     fn test_downgrade_produces_credit() {
         let old = make_plan("Enterprise", PricingModel::Flat, 200.0, None);
         let new = make_plan("Pro", PricingModel::Flat, 100.0, None);
-        let start = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let end = NaiveDate::from_ymd_opt(2026, 3, 31).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let now = NaiveDate::from_ymd_opt(2026, 3, 16).unwrap().and_hms_opt(0, 0, 0).unwrap();
+        let start = NaiveDate::from_ymd_opt(2026, 3, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let end = NaiveDate::from_ymd_opt(2026, 3, 31)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let now = NaiveDate::from_ymd_opt(2026, 3, 16)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
 
         let result = calculate_proration(&old, &new, 1, 1, start, end, now).unwrap();
         assert!(result.net < Decimal::ZERO);
@@ -159,9 +185,18 @@ mod tests {
     fn test_usage_based_rejected() {
         let old = make_plan("Usage", PricingModel::UsageBased, 0.0, Some(0.01));
         let new = make_plan("Pro", PricingModel::Flat, 100.0, None);
-        let start = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let end = NaiveDate::from_ymd_opt(2026, 3, 31).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let now = NaiveDate::from_ymd_opt(2026, 3, 16).unwrap().and_hms_opt(0, 0, 0).unwrap();
+        let start = NaiveDate::from_ymd_opt(2026, 3, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let end = NaiveDate::from_ymd_opt(2026, 3, 31)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let now = NaiveDate::from_ymd_opt(2026, 3, 16)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
 
         let result = calculate_proration(&old, &new, 1, 1, start, end, now);
         assert!(result.is_err());
@@ -170,9 +205,18 @@ mod tests {
     #[test]
     fn test_quantity_change() {
         let plan = make_plan("Per Seat", PricingModel::PerUnit, 10.0, Some(10.0));
-        let start = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let end = NaiveDate::from_ymd_opt(2026, 3, 31).unwrap().and_hms_opt(0, 0, 0).unwrap();
-        let now = NaiveDate::from_ymd_opt(2026, 3, 16).unwrap().and_hms_opt(0, 0, 0).unwrap();
+        let start = NaiveDate::from_ymd_opt(2026, 3, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let end = NaiveDate::from_ymd_opt(2026, 3, 31)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let now = NaiveDate::from_ymd_opt(2026, 3, 16)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
 
         let result = calculate_proration(&plan, &plan, 5, 10, start, end, now).unwrap();
         assert!(result.net > Decimal::ZERO);

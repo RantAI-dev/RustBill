@@ -4,10 +4,10 @@ use rustbill_core::notifications::email::EmailSender;
 use rustbill_core::settings::provider_settings::ProviderSettingsCache;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::Level;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 use crate::routes;
 
@@ -52,11 +52,10 @@ pub async fn build_state(config: AppConfig) -> anyhow::Result<SharedState> {
 
 /// Ensure a default admin user exists. Creates one if the users table is empty.
 async fn ensure_default_admin(db: &sqlx::PgPool) -> anyhow::Result<()> {
-    let has_admin = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin')",
-    )
-    .fetch_one(db)
-    .await?;
+    let has_admin =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin')")
+            .fetch_one(db)
+            .await?;
 
     if !has_admin {
         let password_hash = rustbill_core::auth::password::hash_password("admin123")?;
@@ -97,8 +96,8 @@ pub fn build_router(state: SharedState) -> Router {
     let webhook_routes = Router::new().nest("/api/billing", routes::webhooks_inbound::router());
 
     // Public license verification — no session required
-    let public_license_routes = Router::new()
-        .nest("/api/licenses", routes::licenses::public_router());
+    let public_license_routes =
+        Router::new().nest("/api/licenses", routes::licenses::public_router());
 
     // Admin API — session required (middleware applied per-group)
     let admin_api = Router::new()

@@ -17,9 +17,7 @@ pub fn router() -> Router<SharedState> {
     Router::new().route("/", post(handle_webhook_stub))
 }
 
-async fn handle_webhook_stub(
-    State(_state): State<SharedState>,
-) -> StatusCode {
+async fn handle_webhook_stub(State(_state): State<SharedState>) -> StatusCode {
     tracing::warn!("LemonSqueezy webhook handler is currently stubbed out");
     StatusCode::OK
 }

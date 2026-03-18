@@ -5,11 +5,7 @@ use serde_json::json;
 use sqlx::PgPool;
 
 /// Helper: create customer with billing_country/billing_state for tax lookup (direct SQL)
-async fn create_customer_with_billing(
-    pool: &PgPool,
-    country: &str,
-    state: Option<&str>,
-) -> String {
+async fn create_customer_with_billing(pool: &PgPool, country: &str, state: Option<&str>) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().naive_utc();
 
@@ -245,9 +241,7 @@ fn parse_decimal_value(val: &serde_json::Value) -> rust_decimal::Decimal {
     use std::str::FromStr;
     match val {
         serde_json::Value::String(s) => rust_decimal::Decimal::from_str(s).unwrap(),
-        serde_json::Value::Number(n) => {
-            rust_decimal::Decimal::from_str(&n.to_string()).unwrap()
-        }
+        serde_json::Value::Number(n) => rust_decimal::Decimal::from_str(&n.to_string()).unwrap(),
         _ => panic!("Expected string or number, got: {:?}", val),
     }
 }

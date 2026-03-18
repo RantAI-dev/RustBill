@@ -87,13 +87,12 @@ async fn test_upgrade_plan_creates_positive_proration(pool: PgPool) {
     resp.assert_status_ok();
 
     // Verify subscription now has the new plan
-    let sub: serde_json::Value = sqlx::query_scalar(
-        "SELECT to_jsonb(s) FROM subscriptions s WHERE s.id = $1",
-    )
-    .bind(&sub_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let sub: serde_json::Value =
+        sqlx::query_scalar("SELECT to_jsonb(s) FROM subscriptions s WHERE s.id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(sub["plan_id"].as_str().unwrap(), expensive_id);
 }
 
@@ -129,7 +128,10 @@ async fn test_downgrade_plan_deposits_credit(pool: PgPool) {
     .unwrap();
 
     // Should have some credit (exact amount depends on timing within billing period)
-    assert!(balance.is_some(), "expected credit balance to exist after downgrade");
+    assert!(
+        balance.is_some(),
+        "expected credit balance to exist after downgrade"
+    );
     assert!(
         balance.unwrap() > rust_decimal::Decimal::ZERO,
         "expected positive credit balance after downgrade"
@@ -198,13 +200,11 @@ async fn test_overpayment_deposits_credit(pool: PgPool) {
     assert_eq!(payment.amount, rust_decimal::Decimal::new(12000, 2));
 
     // Check invoice is paid
-    let inv_status: String = sqlx::query_scalar(
-        "SELECT status::text FROM invoices WHERE id = $1",
-    )
-    .bind(&invoice_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let inv_status: String = sqlx::query_scalar("SELECT status::text FROM invoices WHERE id = $1")
+        .bind(&invoice_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(inv_status, "paid");
 
     // Check $20 credit was deposited
@@ -216,7 +216,10 @@ async fn test_overpayment_deposits_credit(pool: PgPool) {
     .await
     .unwrap();
 
-    assert!(balance.is_some(), "expected credit balance after overpayment");
+    assert!(
+        balance.is_some(),
+        "expected credit balance after overpayment"
+    );
     assert_eq!(
         balance.unwrap(),
         rust_decimal::Decimal::new(2000, 2),

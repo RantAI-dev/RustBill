@@ -32,9 +32,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn init_tracing() {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        "rustbill_server=info,rustbill_core=info,tower_http=info".into()
-    });
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "rustbill_server=info,rustbill_core=info,tower_http=info".into());
 
     let run_mode = std::env::var("RUN_MODE").unwrap_or_else(|_| "development".to_string());
     let log_format = std::env::var("LOG_FORMAT").ok();

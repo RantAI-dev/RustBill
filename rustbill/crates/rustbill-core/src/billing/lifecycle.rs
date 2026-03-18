@@ -295,12 +295,10 @@ async fn renew_single_subscription(
     let subtotal = subtotal.unwrap_or_default();
 
     // Step 3a: Tax calculation (uses pool for read-only lookup)
-    let customer = sqlx::query_as::<_, Customer>(
-        "SELECT * FROM customers WHERE id = $1",
-    )
-    .bind(&sub.customer_id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let customer = sqlx::query_as::<_, Customer>("SELECT * FROM customers WHERE id = $1")
+        .bind(&sub.customer_id)
+        .fetch_one(&mut *tx)
+        .await?;
 
     let tax_result = crate::billing::tax::resolve_tax(
         pool,
@@ -350,14 +348,12 @@ async fn renew_single_subscription(
     let final_amount_due = total - credits_applied;
 
     if credits_applied > Decimal::ZERO {
-        sqlx::query(
-            "UPDATE invoices SET credits_applied = $2, amount_due = $3 WHERE id = $1",
-        )
-        .bind(&invoice.id)
-        .bind(credits_applied)
-        .bind(final_amount_due)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("UPDATE invoices SET credits_applied = $2, amount_due = $3 WHERE id = $1")
+            .bind(&invoice.id)
+            .bind(credits_applied)
+            .bind(final_amount_due)
+            .execute(&mut *tx)
+            .await?;
     }
 
     // Step 3d: If fully covered by credits, mark as paid immediately
@@ -395,12 +391,11 @@ async fn renew_single_subscription(
             crate::billing::payment_methods::get_default(pool, &sub.customer_id).await
         {
             // Re-fetch invoice after commit
-            if let Ok(committed_invoice) = sqlx::query_as::<_, Invoice>(
-                "SELECT * FROM invoices WHERE id = $1",
-            )
-            .bind(&invoice_id)
-            .fetch_one(pool)
-            .await
+            if let Ok(committed_invoice) =
+                sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1")
+                    .bind(&invoice_id)
+                    .fetch_one(pool)
+                    .await
             {
                 match crate::billing::auto_charge::try_auto_charge(
                     pool,

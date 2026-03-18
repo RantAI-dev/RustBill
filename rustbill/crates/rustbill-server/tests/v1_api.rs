@@ -2,8 +2,8 @@ mod common;
 
 use axum::http::{HeaderName, HeaderValue};
 use common::{
-    create_test_api_key, create_test_api_key_for_customer, create_test_customer, create_test_plan, create_test_product,
-    create_test_subscription, test_server,
+    create_test_api_key, create_test_api_key_for_customer, create_test_customer, create_test_plan,
+    create_test_product, create_test_subscription, test_server,
 };
 use rust_decimal::Decimal;
 use sqlx::PgPool;

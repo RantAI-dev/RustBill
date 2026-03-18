@@ -63,8 +63,7 @@ async fn get_customer_credits(
         query.currency.as_deref().unwrap_or("USD"),
     )
     .await?;
-    let history =
-        credits::list_credits(&state.db, &customer_id, query.currency.as_deref()).await?;
+    let history = credits::list_credits(&state.db, &customer_id, query.currency.as_deref()).await?;
 
     Ok(Json(serde_json::json!({
         "balance": balance,

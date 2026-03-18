@@ -32,12 +32,8 @@ pub async fn try_auto_charge(
     .await?;
 
     match payment_method.provider {
-        PaymentProvider::Stripe => {
-            charge_stripe(pool, invoice, payment_method, amount).await
-        }
-        PaymentProvider::Xendit => {
-            charge_xendit(pool, invoice, payment_method, amount).await
-        }
+        PaymentProvider::Stripe => charge_stripe(pool, invoice, payment_method, amount).await,
+        PaymentProvider::Xendit => charge_xendit(pool, invoice, payment_method, amount).await,
         PaymentProvider::Lemonsqueezy => Ok(ChargeResult::ManagedExternally),
     }
 }
