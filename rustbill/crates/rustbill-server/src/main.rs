@@ -1,19 +1,11 @@
 use std::net::SocketAddr;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::EnvFilter;
 
 use rustbill_server::app;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize structured logging
-    tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "billing_server=info,rustbill_core=info,tower_http=info".into()
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer().json())
-        .init();
+    init_tracing();
 
     tracing::info!("Starting RustBill Server");
 
@@ -37,6 +29,44 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Server shut down gracefully");
     Ok(())
+}
+
+fn init_tracing() {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        "rustbill_server=info,rustbill_core=info,tower_http=info".into()
+    });
+
+    let run_mode = std::env::var("RUN_MODE").unwrap_or_else(|_| "development".to_string());
+    let log_format = std::env::var("LOG_FORMAT").ok();
+
+    let use_json = match log_format
+        .as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+    {
+        Some(format) if format == "json" => true,
+        Some(format) if format == "pretty" => false,
+        Some(format) => {
+            eprintln!(
+                "Unsupported LOG_FORMAT='{format}'. Falling back to RUN_MODE-based format selection."
+            );
+            run_mode == "production"
+        }
+        None => run_mode == "production",
+    };
+
+    if use_json {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .json()
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .pretty()
+            .with_target(false)
+            .init();
+    }
 }
 
 async fn shutdown_signal() {

@@ -4,9 +4,10 @@ use rustbill_core::notifications::email::EmailSender;
 use rustbill_core::settings::provider_settings::ProviderSettingsCache;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::Level;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 use crate::routes;
 
@@ -125,7 +126,12 @@ pub fn build_router(state: SharedState) -> Router {
         .merge(webhook_routes)
         .merge(public_license_routes)
         .merge(admin_api)
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(DefaultOnRequest::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO))
+                .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
+        )
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .with_state(state)
 }
