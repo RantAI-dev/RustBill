@@ -2,23 +2,19 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import type { Section } from "@/app/page";
+import type { PrimarySection, Section } from "@/app/page";
 import Image from "next/image";
 import { appConfig } from "@/lib/app-config";
 import {
   LayoutDashboard,
-  FlaskConical,
-  Handshake,
-  BarChart3,
   PanelLeftClose,
   PanelLeftOpen,
   Package,
+  Handshake,
   Building2,
-  TrendingUp,
   Settings,
   KeyRound,
   BookOpen,
-  CreditCard,
   Receipt,
   RefreshCw,
   FileText,
@@ -30,29 +26,23 @@ import {
 
 interface SidebarProps {
   activeSection: Section;
+  activePrimary: PrimarySection;
   onSectionChange: (section: Section) => void;
+  onDashboardClick: () => void;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
 }
 
 type NavGroup = {
   label: string;
-  items: { id: Section; label: string; icon: React.ElementType }[];
+  items: { id: Section | "dashboard"; label: string; icon: React.ElementType }[];
 };
 
 const navGroups: NavGroup[] = [
   {
     label: "Dashboard",
     items: [
-      { id: "overview", label: "Overview", icon: LayoutDashboard },
-      { id: "products", label: "Product Performance", icon: Package },
-      { id: "trials", label: "Trials", icon: FlaskConical },
-      { id: "deals", label: "Deals", icon: Handshake },
-      { id: "customers", label: "Customers", icon: Building2 },
-      { id: "licenses", label: "Licenses", icon: KeyRound },
-      { id: "forecasting", label: "Forecasting", icon: TrendingUp },
-      { id: "reports", label: "Reports", icon: BarChart3 },
-      { id: "billing", label: "Billing", icon: CreditCard },
+      { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     ],
   },
   {
@@ -87,7 +77,9 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar({
   activeSection,
+  activePrimary,
   onSectionChange,
+  onDashboardClick,
   collapsed,
   onCollapsedChange,
 }: SidebarProps) {
@@ -150,12 +142,21 @@ export function Sidebar({
             <div className="space-y-0.5">
               {group.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = activeSection === item.id;
+                const isActive =
+                  item.id === "dashboard"
+                    ? activePrimary === "dashboard"
+                    : activeSection === item.id;
 
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onSectionChange(item.id)}
+                    onClick={() => {
+                      if (item.id === "dashboard") {
+                        onDashboardClick();
+                      } else {
+                        onSectionChange(item.id);
+                      }
+                    }}
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 group relative",
                       isActive

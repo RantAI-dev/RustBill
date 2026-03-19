@@ -236,6 +236,122 @@ async fn test_auto_charge_success_settles_invoice(pool: PgPool) {
     assert_eq!(payment_count, 1);
 }
 
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_pre_generate_invoice_before_period_end_is_idempotent(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+
+    let customer_id = create_customer_with_billing(&pool, "US", Some("CA")).await;
+    let plan_id = create_flat_plan(&pool, "Growth Plan", "49.00").await;
+    let sub_id = create_subscription(&pool, &customer_id, &plan_id).await;
+
+    sqlx::query(
+        "UPDATE subscriptions SET current_period_end = NOW() + INTERVAL '3 days' WHERE id = $1",
+    )
+    .bind(&sub_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let resp = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+    let body: serde_json::Value = resp.json();
+
+    assert_eq!(body["success"], json!(true));
+    assert_eq!(body["renewed"], json!(0));
+    assert!(body["pre_generated"].as_u64().unwrap_or(0) >= 1);
+
+    let invoice_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(invoice_count, 1);
+
+    let resp2 = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp2.assert_status_ok();
+
+    let invoice_count_after: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(invoice_count_after, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_pre_generate_invoice_respects_subscription_specific_lead_days(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+
+    let customer_id = create_customer_with_billing(&pool, "US", Some("CA")).await;
+    let plan_id = create_flat_plan(&pool, "Starter Plan", "29.00").await;
+    let sub_id = create_subscription(&pool, &customer_id, &plan_id).await;
+
+    sqlx::query(
+        r#"UPDATE subscriptions
+           SET current_period_end = NOW() + INTERVAL '5 days',
+               metadata = '{"preRenewalInvoiceDays": 3}'::jsonb
+           WHERE id = $1"#,
+    )
+    .bind(&sub_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let resp = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+    let body: serde_json::Value = resp.json();
+
+    assert_eq!(body["success"], json!(true));
+    assert_eq!(body["pre_generated"], json!(0));
+
+    let count_before: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count_before, 0);
+
+    sqlx::query(
+        r#"UPDATE subscriptions
+           SET metadata = '{"preRenewalInvoiceDays": 5}'::jsonb
+           WHERE id = $1"#,
+    )
+    .bind(&sub_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let resp2 = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp2.assert_status_ok();
+    let body2: serde_json::Value = resp2.json();
+    assert!(body2["pre_generated"].as_u64().unwrap_or(0) >= 1);
+
+    let count_after: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM invoices WHERE subscription_id = $1")
+            .bind(&sub_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count_after, 1);
+}
+
 /// Parse a JSON value that could be a string or number into a Decimal.
 fn parse_decimal_value(val: &serde_json::Value) -> rust_decimal::Decimal {
     use std::str::FromStr;

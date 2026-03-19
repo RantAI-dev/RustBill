@@ -67,7 +67,7 @@ export function CustomersSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
 
-  const customers = (allCustomers ?? []) as Customer[];
+  const customers = ((allCustomers ?? []) as unknown) as Customer[];
 
   const filteredCustomers = customers.filter((customer) => {
     const matchesSearch =

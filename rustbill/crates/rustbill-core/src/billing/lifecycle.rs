@@ -18,10 +18,14 @@ use sqlx::PgPool;
 pub struct LifecycleResult {
     pub trials_converted: u64,
     pub canceled: u64,
+    pub pre_generated: u64,
     pub renewed: u64,
     pub invoices_generated: u64,
     pub errors: Vec<String>,
 }
+
+const DEFAULT_PRE_RENEWAL_INVOICE_DAYS: i64 = 7;
+const MAX_PRE_RENEWAL_INVOICE_DAYS: i64 = 90;
 
 /// Run the full subscription lifecycle.
 pub async fn run_full_lifecycle(
@@ -37,16 +41,23 @@ pub async fn run_full_lifecycle(
     // 2. Cancel at period end
     result.canceled = cancel_at_period_end(pool).await?;
 
-    // 3. Renew active subscriptions (with invoice generation)
+    // 3. Pre-generate invoices for subscriptions nearing renewal
+    let (pre_generated, pregen_errors) =
+        pre_generate_upcoming_invoices(pool, email_sender, http_client).await?;
+    result.pre_generated = pre_generated;
+    result.errors.extend(pregen_errors);
+
+    // 4. Renew active subscriptions (with invoice generation/settlement)
     let (renewed, invoiced, errors) =
         renew_active_subscriptions(pool, email_sender, http_client).await?;
     result.renewed = renewed;
     result.invoices_generated = invoiced;
-    result.errors = errors;
+    result.errors.extend(errors);
 
     tracing::info!(
         trials_converted = result.trials_converted,
         canceled = result.canceled,
+        pre_generated = result.pre_generated,
         renewed = result.renewed,
         invoices_generated = result.invoices_generated,
         "Full lifecycle completed"
@@ -119,7 +130,71 @@ async fn cancel_at_period_end(pool: &PgPool) -> Result<u64> {
     Ok(count)
 }
 
-/// Step 3: Renew active subscriptions past period end, generating invoices.
+/// Step 3: Pre-generate invoices for subscriptions nearing period end.
+async fn pre_generate_upcoming_invoices(
+    pool: &PgPool,
+    email_sender: Option<&EmailSender>,
+    http_client: &reqwest::Client,
+) -> Result<(u64, Vec<String>)> {
+    let now = Utc::now().naive_utc();
+    let window_end = now + chrono::Duration::days(MAX_PRE_RENEWAL_INVOICE_DAYS);
+    let mut generated: u64 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    let subs = sqlx::query_as::<_, Subscription>(
+        r#"
+        SELECT * FROM subscriptions
+        WHERE status = 'active'
+          AND deleted_at IS NULL
+          AND cancel_at_period_end = false
+          AND current_period_end > $1
+          AND current_period_end <= $2
+          AND (managed_by IS NULL OR managed_by = '')
+        FOR UPDATE SKIP LOCKED
+        "#,
+    )
+    .bind(now)
+    .bind(window_end)
+    .fetch_all(pool)
+    .await?;
+
+    for sub in &subs {
+        let lead_days = pre_renewal_invoice_days(sub);
+        if lead_days <= 0 {
+            continue;
+        }
+
+        let days_until_end = days_until(now, sub.current_period_end);
+        if days_until_end <= 0 || days_until_end > lead_days {
+            continue;
+        }
+
+        match ensure_renewal_invoice(pool, sub, now, email_sender, Some(http_client), true).await {
+            Ok(Some(output)) => {
+                generated += 1;
+                tracing::info!(
+                    subscription_id = %sub.id,
+                    invoice_id = %output.invoice.id,
+                    invoice_number = %output.invoice.invoice_number,
+                    "Pre-generated renewal invoice"
+                );
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::error!(
+                    subscription_id = %sub.id,
+                    error = %e,
+                    "Failed to pre-generate renewal invoice"
+                );
+                errors.push(format!("sub {}: {}", sub.id, e));
+            }
+        }
+    }
+
+    Ok((generated, errors))
+}
+
+/// Step 4: Renew active subscriptions past period end, generating invoices.
 async fn renew_active_subscriptions(
     pool: &PgPool,
     email_sender: Option<&EmailSender>,
@@ -175,9 +250,213 @@ async fn renew_single_subscription(
         .fetch_one(pool)
         .await?;
 
-    let mut tx = pool.begin().await?;
+    let new_period_end = advance_period(sub.current_period_end, &plan.billing_cycle);
+    let invoice_output = if let Some(existing) =
+        find_existing_renewal_invoice(pool, sub, sub.current_period_end).await?
+    {
+        RenewalInvoiceOutput {
+            invoice: existing.clone(),
+            final_amount_due: existing.amount_due,
+            total: existing.total,
+            invoice_number: existing.invoice_number.clone(),
+            plan_name: plan.name.clone(),
+            new_period_end,
+        }
+    } else {
+        ensure_renewal_invoice(pool, sub, now, email_sender, None, false)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "renewal invoice creation returned no invoice for subscription {}",
+                    sub.id
+                )
+            })?
+    };
 
-    // Calculate the subscription amount
+    // Advance the subscription period now that billing has been prepared
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE subscriptions SET
+            current_period_start = current_period_end,
+            current_period_end = $2,
+            version = version + 1,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(&sub.id)
+    .bind(invoice_output.new_period_end)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let invoice = invoice_output.invoice.clone();
+    let invoice_id = invoice.id.clone();
+    let final_amount_due = invoice_output.final_amount_due;
+
+    // Step 3e: Auto-charge (outside transaction — may make external API calls)
+    if final_amount_due > Decimal::ZERO && invoice.status != InvoiceStatus::Paid {
+        if let Ok(Some(payment_method)) =
+            crate::billing::payment_methods::get_default(pool, &sub.customer_id).await
+        {
+            match crate::billing::auto_charge::try_auto_charge(
+                pool,
+                &invoice,
+                &payment_method,
+                http_client,
+            )
+            .await
+            {
+                Ok(crate::billing::auto_charge::ChargeResult::Success { provider_reference }) => {
+                    match settle_auto_charge_success(
+                        pool,
+                        http_client,
+                        &invoice,
+                        &payment_method,
+                        provider_reference.as_deref(),
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            tracing::info!("Auto-charge settled invoice {}", invoice_id);
+                        }
+                        Err(err) => {
+                            tracing::error!(
+                                "Auto-charge payment settlement failed for invoice {}: {}",
+                                invoice_id,
+                                err
+                            );
+                        }
+                    }
+                }
+                Ok(crate::billing::auto_charge::ChargeResult::PermanentFailure(reason)) => {
+                    tracing::warn!(
+                        "Auto-charge permanently failed for invoice {}: {}",
+                        invoice_id,
+                        reason
+                    );
+                    crate::billing::payment_methods::mark_failed(pool, &payment_method.id)
+                        .await
+                        .ok();
+                }
+                Ok(result) => {
+                    tracing::info!(
+                        "Auto-charge result for invoice {}: {:?}",
+                        invoice_id,
+                        result
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("Auto-charge error for invoice {}: {}", invoice_id, e);
+                }
+            }
+        }
+    }
+
+    // Emit billing event (non-blocking)
+    let pool_clone = pool.clone();
+    let http_clone = http_client.clone();
+    let sub_id = sub.id.clone();
+    let cust_id = sub.customer_id.clone();
+    let inv_data = serde_json::json!({
+        "invoice_id": invoice_id,
+        "invoice_number": invoice_output.invoice_number,
+        "total": invoice_output.total.to_string(),
+    });
+    tokio::spawn(async move {
+        let _ = crate::notifications::emit_billing_event(
+            &pool_clone,
+            &http_clone,
+            BillingEventType::SubscriptionRenewed,
+            "subscription",
+            &sub_id,
+            Some(&cust_id),
+            Some(inv_data),
+        )
+        .await;
+    });
+
+    // Send renewal email notification (non-blocking)
+    let pool_email = pool.clone();
+    let email_sender_cloned = email_sender.cloned();
+    let customer_id = sub.customer_id.clone();
+    let plan_name = invoice_output.plan_name.clone();
+    let inv_num = invoice_output.invoice_number.clone();
+    let total_str = invoice_output.total.to_string();
+    let period_end_str = invoice_output.new_period_end.format("%Y-%m-%d").to_string();
+    tokio::spawn(async move {
+        send::notify_subscription_renewed(
+            email_sender_cloned.as_ref(),
+            &pool_email,
+            &customer_id,
+            &plan_name,
+            &inv_num,
+            &total_str,
+            "USD",
+            &period_end_str,
+        )
+        .await;
+    });
+
+    tracing::info!(
+        subscription_id = %sub.id,
+        invoice_number = %invoice_output.invoice_number,
+        total = %invoice_output.total,
+        "Subscription renewed with invoice"
+    );
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct RenewalInvoiceOutput {
+    invoice: Invoice,
+    final_amount_due: Decimal,
+    total: Decimal,
+    invoice_number: String,
+    plan_name: String,
+    new_period_end: NaiveDateTime,
+}
+
+async fn find_existing_renewal_invoice(
+    pool: &PgPool,
+    sub: &Subscription,
+    period_start: NaiveDateTime,
+) -> Result<Option<Invoice>> {
+    let key = renewal_invoice_key(sub, period_start);
+    let invoice = sqlx::query_as::<_, Invoice>(
+        r#"
+        SELECT * FROM invoices
+        WHERE subscription_id = $1
+          AND idempotency_key = $2
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&sub.id)
+    .bind(key)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(invoice)
+}
+
+async fn ensure_renewal_invoice(
+    pool: &PgPool,
+    sub: &Subscription,
+    now: NaiveDateTime,
+    email_sender: Option<&EmailSender>,
+    http_client: Option<&reqwest::Client>,
+    notify_invoice_issued: bool,
+) -> Result<Option<RenewalInvoiceOutput>> {
+    let plan = sqlx::query_as::<_, PricingPlan>("SELECT * FROM pricing_plans WHERE id = $1")
+        .bind(&sub.plan_id)
+        .fetch_one(pool)
+        .await?;
+
     let quantity = compute_quantity(pool, sub, &plan).await?;
     let tiers: Option<Vec<PricingTier>> = plan
         .tiers
@@ -192,22 +471,49 @@ async fn renew_single_subscription(
         quantity,
     );
 
-    // Generate invoice number
+    let new_period_end = advance_period(sub.current_period_end, &plan.billing_cycle);
+    let due_at = now + chrono::Duration::days(30);
+    let idempotency_key = renewal_invoice_key(sub, sub.current_period_end);
+
+    let mut tx = pool.begin().await?;
+
+    if let Some(existing) = sqlx::query_as::<_, Invoice>(
+        r#"
+        SELECT * FROM invoices
+        WHERE subscription_id = $1
+          AND idempotency_key = $2
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&sub.id)
+    .bind(&idempotency_key)
+    .fetch_optional(&mut *tx)
+    .await?
+    {
+        tx.commit().await?;
+        return Ok(Some(RenewalInvoiceOutput {
+            invoice: existing.clone(),
+            final_amount_due: existing.amount_due,
+            total: existing.total,
+            invoice_number: existing.invoice_number.clone(),
+            plan_name: plan.name,
+            new_period_end,
+        }));
+    }
+
     let invoice_number: String =
         sqlx::query_scalar("SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')")
             .fetch_one(&mut *tx)
             .await?;
 
-    let new_period_end = advance_period(sub.current_period_end, &plan.billing_cycle);
-    let due_at = now + chrono::Duration::days(30);
-
-    // Create invoice
     let invoice = sqlx::query_as::<_, Invoice>(
         r#"
         INSERT INTO invoices
             (id, invoice_number, customer_id, subscription_id, status,
-             issued_at, due_at, subtotal, tax, total, currency, notes)
-        VALUES (gen_random_uuid()::text, $1, $2, $3, 'issued', $4, $5, 0, 0, 0, 'USD', $6)
+             issued_at, due_at, subtotal, tax, total, currency, notes, idempotency_key)
+        VALUES (gen_random_uuid()::text, $1, $2, $3, 'issued', $4, $5, 0, 0, 0, 'USD', $6, $7)
         RETURNING *
         "#,
     )
@@ -217,10 +523,10 @@ async fn renew_single_subscription(
     .bind(now)
     .bind(due_at)
     .bind(format!("Auto-renewal for subscription {}", sub.id))
+    .bind(&idempotency_key)
     .fetch_one(&mut *tx)
     .await?;
 
-    // Add line item for the plan
     sqlx::query(
         r#"
         INSERT INTO invoice_items
@@ -238,12 +544,11 @@ async fn renew_single_subscription(
     .bind(Decimal::from(quantity))
     .bind(plan.base_price)
     .bind(amount)
-    .bind(sub.current_period_end) // new period starts at old period end
+    .bind(sub.current_period_end)
     .bind(new_period_end)
     .execute(&mut *tx)
     .await?;
 
-    // Apply active coupon discounts from subscription_discounts table
     let discounts = sqlx::query_as::<_, SubscriptionDiscountWithCoupon>(
         r#"
         SELECT sd.id, sd.subscription_id, sd.coupon_id, sd.applied_at, sd.expires_at,
@@ -284,7 +589,6 @@ async fn renew_single_subscription(
         }
     }
 
-    // Recompute invoice subtotal from line items (plan + discounts)
     let subtotal: Option<Decimal> = sqlx::query_scalar(
         "SELECT COALESCE(SUM(amount), 0) FROM invoice_items WHERE invoice_id = $1",
     )
@@ -294,7 +598,6 @@ async fn renew_single_subscription(
 
     let subtotal = subtotal.unwrap_or_default();
 
-    // Step 3a: Tax calculation (uses pool for read-only lookup)
     let customer = sqlx::query_as::<_, Customer>("SELECT * FROM customers WHERE id = $1")
         .bind(&sub.customer_id)
         .fetch_one(&mut *tx)
@@ -311,12 +614,11 @@ async fn renew_single_subscription(
 
     let tax_amount = tax_result.amount;
     let total = if tax_result.inclusive {
-        subtotal // Tax is already included in the subtotal
+        subtotal
     } else {
-        subtotal + tax_amount // Add tax on top
+        subtotal + tax_amount
     };
 
-    // Step 3b: Update invoice with computed totals and tax fields
     sqlx::query(
         r#"UPDATE invoices SET
             subtotal = $2, tax = $3, total = $4,
@@ -335,7 +637,6 @@ async fn renew_single_subscription(
     .execute(&mut *tx)
     .await?;
 
-    // Step 3c: Apply customer credits
     let credits_applied = crate::billing::credits::apply_to_invoice(
         &mut tx,
         &sub.customer_id,
@@ -356,7 +657,6 @@ async fn renew_single_subscription(
             .await?;
     }
 
-    // Step 3d: If fully covered by credits, mark as paid immediately
     if final_amount_due <= Decimal::ZERO {
         sqlx::query("UPDATE invoices SET status = 'paid' WHERE id = $1")
             .bind(&invoice.id)
@@ -364,146 +664,82 @@ async fn renew_single_subscription(
             .await?;
     }
 
-    // Advance the subscription period
-    sqlx::query(
-        r#"
-        UPDATE subscriptions SET
-            current_period_start = current_period_end,
-            current_period_end = $2,
-            version = version + 1,
-            updated_at = NOW()
-        WHERE id = $1
-        "#,
-    )
-    .bind(&sub.id)
-    .bind(new_period_end)
-    .execute(&mut *tx)
-    .await?;
-
-    // Save invoice_id before committing (invoice is consumed by tx)
-    let invoice_id = invoice.id.clone();
+    let committed_invoice = sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1")
+        .bind(&invoice.id)
+        .fetch_one(&mut *tx)
+        .await?;
 
     tx.commit().await?;
 
-    // Step 3e: Auto-charge (outside transaction — may make external API calls)
-    if final_amount_due > Decimal::ZERO {
-        if let Ok(Some(payment_method)) =
-            crate::billing::payment_methods::get_default(pool, &sub.customer_id).await
-        {
-            // Re-fetch invoice after commit
-            if let Ok(committed_invoice) =
-                sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1")
-                    .bind(&invoice_id)
-                    .fetch_one(pool)
-                    .await
-            {
-                match crate::billing::auto_charge::try_auto_charge(
-                    pool,
-                    &committed_invoice,
-                    &payment_method,
-                    http_client,
-                )
-                .await
-                {
-                    Ok(crate::billing::auto_charge::ChargeResult::Success) => {
-                        match settle_auto_charge_success(
-                            pool,
-                            http_client,
-                            &committed_invoice,
-                            &payment_method,
-                        )
-                        .await
-                        {
-                            Ok(()) => {
-                                tracing::info!("Auto-charge settled invoice {}", invoice_id);
-                            }
-                            Err(err) => {
-                                tracing::error!(
-                                    "Auto-charge payment settlement failed for invoice {}: {}",
-                                    invoice_id,
-                                    err
-                                );
-                            }
-                        }
-                    }
-                    Ok(crate::billing::auto_charge::ChargeResult::PermanentFailure(reason)) => {
-                        tracing::warn!(
-                            "Auto-charge permanently failed for invoice {}: {}",
-                            invoice_id,
-                            reason
-                        );
-                        crate::billing::payment_methods::mark_failed(pool, &payment_method.id)
-                            .await
-                            .ok();
-                    }
-                    Ok(result) => {
-                        tracing::info!(
-                            "Auto-charge result for invoice {}: {:?}",
-                            invoice_id,
-                            result
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!("Auto-charge error for invoice {}: {}", invoice_id, e);
-                    }
-                }
-            }
+    if notify_invoice_issued {
+        let due_date = due_at.format("%Y-%m-%d").to_string();
+        let _ = send::notify_invoice_issued(
+            email_sender,
+            pool,
+            &sub.customer_id,
+            &invoice_number,
+            &total.to_string(),
+            &committed_invoice.currency,
+            &due_date,
+        )
+        .await;
+
+        if let Some(http_client) = http_client {
+            let _ = crate::notifications::emit_billing_event(
+                pool,
+                http_client,
+                BillingEventType::InvoiceIssued,
+                "invoice",
+                &committed_invoice.id,
+                Some(&sub.customer_id),
+                Some(serde_json::json!({
+                    "invoice_number": invoice_number,
+                    "total": total.to_string(),
+                    "due_at": due_date,
+                    "pre_generated": true,
+                })),
+            )
+            .await;
         }
     }
 
-    // Emit billing event (non-blocking)
-    let pool_clone = pool.clone();
-    let http_clone = http_client.clone();
-    let sub_id = sub.id.clone();
-    let cust_id = sub.customer_id.clone();
-    let inv_data = serde_json::json!({
-        "invoice_id": invoice_id,
-        "invoice_number": invoice_number,
-        "total": total.to_string(),
-    });
-    tokio::spawn(async move {
-        let _ = crate::notifications::emit_billing_event(
-            &pool_clone,
-            &http_clone,
-            BillingEventType::SubscriptionRenewed,
-            "subscription",
-            &sub_id,
-            Some(&cust_id),
-            Some(inv_data),
-        )
-        .await;
-    });
+    Ok(Some(RenewalInvoiceOutput {
+        invoice: committed_invoice,
+        final_amount_due,
+        total,
+        invoice_number,
+        plan_name: plan.name,
+        new_period_end,
+    }))
+}
 
-    // Send renewal email notification (non-blocking)
-    let pool_email = pool.clone();
-    let email_sender_cloned = email_sender.cloned();
-    let customer_id = sub.customer_id.clone();
-    let plan_name = plan.name.clone();
-    let inv_num = invoice_number.clone();
-    let total_str = total.to_string();
-    let period_end_str = new_period_end.format("%Y-%m-%d").to_string();
-    tokio::spawn(async move {
-        send::notify_subscription_renewed(
-            email_sender_cloned.as_ref(),
-            &pool_email,
-            &customer_id,
-            &plan_name,
-            &inv_num,
-            &total_str,
-            "USD",
-            &period_end_str,
-        )
-        .await;
-    });
+fn renewal_invoice_key(sub: &Subscription, period_start: NaiveDateTime) -> String {
+    format!("renewal:{}:{}", sub.id, period_start.format("%Y%m%d%H%M%S"))
+}
 
-    tracing::info!(
-        subscription_id = %sub.id,
-        invoice_number = %invoice_number,
-        total = %total,
-        "Subscription renewed with invoice"
-    );
+fn pre_renewal_invoice_days(sub: &Subscription) -> i64 {
+    let from_metadata = sub
+        .metadata
+        .as_ref()
+        .and_then(|meta| meta.as_object())
+        .and_then(|obj| {
+            obj.get("preRenewalInvoiceDays")
+                .or_else(|| obj.get("pre_renewal_invoice_days"))
+        })
+        .and_then(|v| v.as_i64());
 
-    Ok(())
+    from_metadata
+        .unwrap_or(DEFAULT_PRE_RENEWAL_INVOICE_DAYS)
+        .clamp(0, MAX_PRE_RENEWAL_INVOICE_DAYS)
+}
+
+fn days_until(from: NaiveDateTime, to: NaiveDateTime) -> i64 {
+    let seconds = (to - from).num_seconds();
+    if seconds <= 0 {
+        0
+    } else {
+        (seconds + 86_399) / 86_400
+    }
 }
 
 /// For usage-based plans, compute quantity from usage_events for the period.
@@ -592,6 +828,7 @@ async fn settle_auto_charge_success(
     http_client: &reqwest::Client,
     invoice: &Invoice,
     payment_method: &SavedPaymentMethod,
+    provider_reference: Option<&str>,
 ) -> Result<()> {
     let method = match payment_method.provider {
         PaymentProvider::Stripe => PaymentMethod::Stripe,
@@ -616,12 +853,23 @@ async fn settle_auto_charge_success(
     }
 
     let paid_at = Utc::now().naive_utc();
+    let stripe_ref = if payment_method.provider == PaymentProvider::Stripe {
+        provider_reference
+    } else {
+        None
+    };
+    let xendit_ref = if payment_method.provider == PaymentProvider::Xendit {
+        provider_reference
+    } else {
+        None
+    };
+
     let payment: Payment = sqlx::query_as(
         r#"
         INSERT INTO payments
             (id, invoice_id, amount, method, reference, paid_at, notes,
              stripe_payment_intent_id, xendit_payment_id, lemonsqueezy_order_id)
-        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NULL, NULL, NULL)
+        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, NULL)
         RETURNING *
         "#,
     )
@@ -635,6 +883,8 @@ async fn settle_auto_charge_success(
     ))
     .bind(paid_at)
     .bind("Auto-charge via saved payment method")
+    .bind(stripe_ref)
+    .bind(xendit_ref)
     .fetch_one(&mut *tx)
     .await?;
 

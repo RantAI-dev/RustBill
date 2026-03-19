@@ -173,6 +173,11 @@ function ProductForm({ product, onClose, onSuccess }: { product: Product | null;
   const [avgLatency, setAvgLatency] = useState((product?.avgLatency as number) ?? 0);
   const [submitting, setSubmitting] = useState(false);
 
+  const toNumberOrZero = (value: string) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const inputClass = "w-full h-9 mt-1 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent";
 
   const handleSubmit = async () => {
@@ -221,7 +226,7 @@ function ProductForm({ product, onClose, onSuccess }: { product: Product | null;
       </div>
       <div>
         <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Target ($)</label>
-        <input type="number" value={target} onChange={(e) => setTarget(Number(e.target.value))} className={inputClass} />
+        <input type="number" value={target} onChange={(e) => setTarget(toNumberOrZero(e.target.value))} className={inputClass} />
       </div>
       {productType === "licensed" && (
         <div className="rounded-lg bg-secondary/50 border border-border p-3">
@@ -230,18 +235,18 @@ function ProductForm({ product, onClose, onSuccess }: { product: Product | null;
       )}
       {productType === "saas" && (
         <div className="grid grid-cols-3 gap-3">
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">MAU</label><input type="number" value={mau} onChange={(e) => setMau(Number(e.target.value))} className={inputClass} /></div>
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DAU</label><input type="number" value={dau} onChange={(e) => setDau(Number(e.target.value))} className={inputClass} /></div>
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Churn %</label><input type="number" step="0.1" value={churnRate} onChange={(e) => setChurnRate(Number(e.target.value))} className={inputClass} /></div>
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Free Users</label><input type="number" value={freeUsers} onChange={(e) => setFreeUsers(Number(e.target.value))} className={inputClass} /></div>
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid Users</label><input type="number" value={paidUsers} onChange={(e) => setPaidUsers(Number(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">MAU</label><input type="number" value={mau} onChange={(e) => setMau(toNumberOrZero(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">DAU</label><input type="number" value={dau} onChange={(e) => setDau(toNumberOrZero(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Churn %</label><input type="number" step="0.1" value={churnRate} onChange={(e) => setChurnRate(toNumberOrZero(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Free Users</label><input type="number" value={freeUsers} onChange={(e) => setFreeUsers(toNumberOrZero(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid Users</label><input type="number" value={paidUsers} onChange={(e) => setPaidUsers(toNumberOrZero(e.target.value))} className={inputClass} /></div>
         </div>
       )}
       {productType === "api" && (
         <div className="grid grid-cols-3 gap-3">
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Calls</label><input type="number" value={apiCalls} onChange={(e) => setApiCalls(Number(e.target.value))} className={inputClass} /></div>
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Developers</label><input type="number" value={activeDevelopers} onChange={(e) => setActiveDevelopers(Number(e.target.value))} className={inputClass} /></div>
-          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency (ms)</label><input type="number" value={avgLatency} onChange={(e) => setAvgLatency(Number(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">API Calls</label><input type="number" value={apiCalls} onChange={(e) => setApiCalls(toNumberOrZero(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Developers</label><input type="number" value={activeDevelopers} onChange={(e) => setActiveDevelopers(toNumberOrZero(e.target.value))} className={inputClass} /></div>
+          <div><label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency (ms)</label><input type="number" value={avgLatency} onChange={(e) => setAvgLatency(toNumberOrZero(e.target.value))} className={inputClass} /></div>
         </div>
       )}
       <DialogFooter className="pt-4 border-t border-border">

@@ -152,6 +152,8 @@ struct CreatePaymentMethodRequestV1 {
 struct PaymentMethodSetupRequestV1 {
     customer_id: String,
     provider: rustbill_core::db::models::PaymentProvider,
+    success_url: Option<String>,
+    cancel_url: Option<String>,
 }
 
 async fn list_payment_methods_v1(
@@ -194,19 +196,136 @@ async fn create_payment_method_v1(
 }
 
 async fn create_payment_method_setup_v1(
+    State(state): State<SharedState>,
     Extension(api_key): Extension<ApiKeyInfo>,
     Query(_query): Query<PaymentMethodCustomerQuery>,
     Json(body): Json<PaymentMethodSetupRequestV1>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
     let customer_id = scoped_customer_id(&api_key, Some(&body.customer_id))?;
-    Ok((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({
-            "message": "payment method setup session is not implemented yet",
-            "customerId": customer_id,
-            "provider": body.provider,
-        })),
-    ))
+
+    let response = match body.provider {
+        rustbill_core::db::models::PaymentProvider::Stripe => {
+            create_stripe_setup_session(
+                &state,
+                &customer_id,
+                body.success_url.as_deref(),
+                body.cancel_url.as_deref(),
+            )
+            .await?
+        }
+        rustbill_core::db::models::PaymentProvider::Xendit => {
+            create_xendit_setup_session(&state, &customer_id).await?
+        }
+        rustbill_core::db::models::PaymentProvider::Lemonsqueezy => {
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "lemonsqueezy setup sessions are not supported; use LS-managed subscription checkout",
+                })),
+            ));
+        }
+    };
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+async fn create_stripe_setup_session(
+    state: &SharedState,
+    customer_id: &str,
+    success_url: Option<&str>,
+    cancel_url: Option<&str>,
+) -> ApiResult<serde_json::Value> {
+    let secret = state.provider_cache.get("stripe_secret_key").await;
+    if secret.is_empty() {
+        return Err(BillingError::ProviderNotConfigured("stripe".to_string()).into());
+    }
+
+    let success = success_url.unwrap_or("https://example.com/billing/payment-methods/success");
+    let cancel = cancel_url.unwrap_or("https://example.com/billing/payment-methods/cancel");
+
+    let form = vec![
+        ("mode", "setup".to_string()),
+        ("success_url", success.to_string()),
+        ("cancel_url", cancel.to_string()),
+        ("payment_method_types[0]", "card".to_string()),
+        ("metadata[customer_id]", customer_id.to_string()),
+    ];
+
+    let resp = reqwest::Client::new()
+        .post("https://api.stripe.com/v1/checkout/sessions")
+        .bearer_auth(secret)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|e| BillingError::Internal(anyhow::anyhow!("stripe setup request failed: {e}")))?;
+
+    let status = resp.status();
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| BillingError::Internal(anyhow::anyhow!("stripe setup parse failed: {e}")))?;
+
+    if !status.is_success() {
+        let msg = body["error"]["message"]
+            .as_str()
+            .unwrap_or("stripe setup failed")
+            .to_string();
+        return Err(BillingError::BadRequest(msg).into());
+    }
+
+    Ok(serde_json::json!({
+        "provider": "stripe",
+        "customerId": customer_id,
+        "setupUrl": body["url"],
+        "sessionId": body["id"],
+    }))
+}
+
+async fn create_xendit_setup_session(
+    state: &SharedState,
+    customer_id: &str,
+) -> ApiResult<serde_json::Value> {
+    let secret = state.provider_cache.get("xendit_secret_key").await;
+    if secret.is_empty() {
+        return Err(BillingError::ProviderNotConfigured("xendit".to_string()).into());
+    }
+
+    let body = serde_json::json!({
+        "type": "CARD",
+        "reusability": "MULTIPLE_USE",
+        "metadata": {
+            "customer_id": customer_id,
+        }
+    });
+
+    let resp = reqwest::Client::new()
+        .post("https://api.xendit.co/payment_methods")
+        .basic_auth(secret, Some(""))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| BillingError::Internal(anyhow::anyhow!("xendit setup request failed: {e}")))?;
+
+    let status = resp.status();
+    let payload: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| BillingError::Internal(anyhow::anyhow!("xendit setup parse failed: {e}")))?;
+
+    if !status.is_success() {
+        let msg = payload["message"]
+            .as_str()
+            .unwrap_or("xendit setup failed")
+            .to_string();
+        return Err(BillingError::BadRequest(msg).into());
+    }
+
+    Ok(serde_json::json!({
+        "provider": "xendit",
+        "customerId": customer_id,
+        "setupId": payload["id"],
+        "actions": payload["actions"],
+    }))
 }
 
 async fn delete_payment_method_v1(

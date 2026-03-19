@@ -63,36 +63,42 @@ export function BillingSection() {
   const paymentList = pmts || [];
 
   // Compute metrics
-  const activeSubs = subscriptions.filter((s: { status: string }) => s.status === "active");
+  const activeSubs = subscriptions.filter((s) => (s.status as string) === "active");
 
   // MRR = sum of all active subscription plan base prices (normalized to monthly)
-  const mrr = activeSubs.reduce((sum: number, s: { planBasePrice: number | null; planBillingCycle: string | null; quantity: number }) => {
-    const base = s.planBasePrice ?? 0;
-    const qty = s.quantity ?? 1;
-    const cycle = s.planBillingCycle;
+  const mrr = activeSubs.reduce((sum: number, s) => {
+    const base = Number((s.planBasePrice as number | null) ?? (s.plan_base_price as number | null) ?? 0);
+    const qty = Number((s.quantity as number) ?? 1);
+    const cycle = ((s.planBillingCycle as string | null) ?? (s.plan_billing_cycle as string | null));
     let monthly = base * qty;
     if (cycle === "quarterly") monthly = monthly / 3;
     if (cycle === "yearly") monthly = monthly / 12;
     return sum + monthly;
   }, 0);
 
-  const totalCollected = paymentList.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
-  const outstandingInvoices = invoiceList.filter((i: { status: string }) => i.status === "issued" || i.status === "overdue");
-  const overdueInvoices = invoiceList.filter((i: { status: string }) => i.status === "overdue");
+  const totalCollected = paymentList.reduce((sum: number, p: Record<string, unknown>) => sum + Number((p.amount as number) ?? 0), 0);
+  const outstandingInvoices = invoiceList.filter((i: Record<string, unknown>) => {
+    const status = (i.status as string) ?? (i.status as string);
+    return status === "issued" || status === "overdue";
+  });
+  const overdueInvoices = invoiceList.filter((i: Record<string, unknown>) => (i.status as string) === "overdue");
 
   // Invoice status breakdown for pie chart
-  const statusCounts = invoiceList.reduce((acc: Record<string, number>, i: { status: string }) => {
-    acc[i.status] = (acc[i.status] || 0) + 1;
+  const statusCounts = invoiceList.reduce((acc: Record<string, number>, i: Record<string, unknown>) => {
+    const status = (i.status as string) ?? "unknown";
+    acc[status] = (acc[status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   const pieData = Object.entries(statusCounts).map(([name, value]) => ({ name, value }));
 
   // Revenue by month (from payments)
-  const monthlyRevenue = paymentList.reduce((acc: Record<string, number>, p: { paidAt: string; amount: number }) => {
-    const d = new Date(p.paidAt);
+  const monthlyRevenue = paymentList.reduce((acc: Record<string, number>, p: Record<string, unknown>) => {
+    const paidAt = (p.paidAt as string) ?? (p.paid_at as string);
+    if (!paidAt) return acc;
+    const d = new Date(paidAt);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    acc[key] = (acc[key] || 0) + p.amount;
+    acc[key] = (acc[key] || 0) + Number((p.amount as number) ?? 0);
     return acc;
   }, {} as Record<string, number>);
 
@@ -126,7 +132,7 @@ export function BillingSection() {
         <MetricCard
           title="Outstanding Invoices"
           value={String(outstandingInvoices.length)}
-          change={formatCurrency(outstandingInvoices.reduce((s: number, i: { total: number }) => s + i.total, 0))}
+          change={formatCurrency(outstandingInvoices.reduce((s: number, i: Record<string, unknown>) => s + Number((i.total as number) ?? 0), 0))}
           changeType={overdueInvoices.length > 0 ? "negative" : "neutral"}
           icon={FileText}
           delay={2}

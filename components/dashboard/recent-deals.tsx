@@ -56,8 +56,9 @@ export function RecentDeals() {
           const productType = deal.productType as ProductType;
           const productName = (deal.productName ?? deal.product) as string;
           const licenseKey = deal.licenseKey as string | null;
-          const company = deal.company as string;
-          const value = deal.value as number;
+          const companyRaw = deal.company as string | undefined;
+          const company = companyRaw && companyRaw !== "_" ? companyRaw : "Unknown Company";
+          const value = Number((deal.value as number | string) ?? 0);
 
           return (
             <div

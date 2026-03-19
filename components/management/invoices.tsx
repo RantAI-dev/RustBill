@@ -20,6 +20,37 @@ import { DeleteDialog } from "./delete-dialog";
 type Inv = Record<string, unknown>;
 type DialogMode = "view" | "edit" | "create";
 
+function normalizeInvoicePayload(invoice: Inv): Inv {
+  const items = Array.isArray(invoice.items)
+    ? (invoice.items as Inv[]).map((item) => ({
+        ...item,
+        unitPrice: (item.unit_price as number) ?? item.unitPrice,
+        periodStart: (item.period_start as string) ?? item.periodStart,
+        periodEnd: (item.period_end as string) ?? item.periodEnd,
+      }))
+    : [];
+
+  const payments = Array.isArray(invoice.payments)
+    ? (invoice.payments as Inv[]).map((payment) => ({
+        ...payment,
+        paidAt: (payment.paid_at as string) ?? payment.paidAt,
+      }))
+    : [];
+
+  return {
+    ...invoice,
+    invoiceNumber: (invoice.invoice_number as string) ?? invoice.invoiceNumber,
+    customerName: (invoice.customer_name as string) ?? invoice.customerName,
+    customerId: (invoice.customer_id as string) ?? invoice.customerId,
+    subscriptionId: (invoice.subscription_id as string) ?? invoice.subscriptionId,
+    issuedAt: (invoice.issued_at as string) ?? invoice.issuedAt,
+    dueAt: (invoice.due_at as string) ?? invoice.dueAt,
+    paidAt: (invoice.paid_at as string) ?? invoice.paidAt,
+    items,
+    payments,
+  };
+}
+
 const statusColors: Record<string, string> = {
   draft: "bg-muted-foreground/20 text-muted-foreground",
   issued: "bg-blue-500/20 text-blue-400",
@@ -417,14 +448,24 @@ function InvoiceForm({ invoice, mode, customers, subscriptions, onSubmit, onCanc
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Customer</label>
-              <select className={inputClass} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value, subscriptionId: "" })}>
+              <select
+                data-testid="invoice-form-customer"
+                className={inputClass}
+                value={form.customerId}
+                onChange={(e) => setForm({ ...form, customerId: e.target.value, subscriptionId: "" })}
+              >
                 <option value="">Select customer</option>
                 {customers.map((c) => <option key={c.id as string} value={c.id as string}>{c.name as string}</option>)}
               </select>
             </div>
             <div>
               <label className={labelClass}>Subscription (optional)</label>
-              <select className={inputClass} value={form.subscriptionId} onChange={(e) => setForm({ ...form, subscriptionId: e.target.value })}>
+              <select
+                data-testid="invoice-form-subscription"
+                className={inputClass}
+                value={form.subscriptionId}
+                onChange={(e) => setForm({ ...form, subscriptionId: e.target.value })}
+              >
                 <option value="">None (manual items)</option>
                 {filteredSubs.map((s) => <option key={s.id as string} value={s.id as string}>{(s.planName as string) ?? "Plan"} — {(s.customerName as string) ?? ""}</option>)}
               </select>
@@ -435,7 +476,12 @@ function InvoiceForm({ invoice, mode, customers, subscriptions, onSubmit, onCanc
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label className={labelClass}>Status</label>
-            <select className={inputClass} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            <select
+              data-testid="invoice-form-status"
+              className={inputClass}
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+            >
               <option value="draft">Draft</option>
               <option value="issued">Issued</option>
               <option value="paid">Paid</option>
@@ -476,9 +522,29 @@ function InvoiceForm({ invoice, mode, customers, subscriptions, onSubmit, onCanc
             <div className="space-y-2">
               {form.items.map((item, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <input className={cn(inputClass, "flex-1")} placeholder="Description" value={item.description} onChange={(e) => updateItem(idx, "description", e.target.value)} />
-                  <input type="number" className={cn(inputClass, "w-20")} placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
-                  <input type="number" className={cn(inputClass, "w-28")} placeholder="Price" value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
+                  <input
+                    data-testid={`invoice-item-description-${idx}`}
+                    className={cn(inputClass, "flex-1")}
+                    placeholder="Description"
+                    value={item.description}
+                    onChange={(e) => updateItem(idx, "description", e.target.value)}
+                  />
+                  <input
+                    data-testid={`invoice-item-qty-${idx}`}
+                    type="number"
+                    className={cn(inputClass, "w-20")}
+                    placeholder="Qty"
+                    value={item.quantity}
+                    onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))}
+                  />
+                  <input
+                    data-testid={`invoice-item-price-${idx}`}
+                    type="number"
+                    className={cn(inputClass, "w-28")}
+                    placeholder="Price"
+                    value={item.unitPrice}
+                    onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))}
+                  />
                   {form.items.length > 1 && (
                     <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => removeItem(idx)}>
                       <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
@@ -493,7 +559,7 @@ function InvoiceForm({ invoice, mode, customers, subscriptions, onSubmit, onCanc
 
       <DialogFooter className="mt-6">
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button disabled={loading} onClick={() => {
+        <Button data-testid="invoice-form-submit" disabled={loading || (isCreate && !form.customerId)} onClick={() => {
           const submitData: Record<string, unknown> = {
             status: form.status,
             tax: form.tax,
@@ -628,7 +694,7 @@ export function ManageInvoicesSection() {
     try {
       const res = await fetch(`/api/billing/invoices/${inv.id}`);
       const data = await res.json();
-      setFullInvoice(data);
+      setFullInvoice(normalizeInvoicePayload(data as Inv));
       setSelected(inv);
       setDialogMode("view");
       setDialogOpen(true);
@@ -746,7 +812,7 @@ export function ManageInvoicesSection() {
             className="w-full h-9 pl-9 pr-4 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/20"
           />
         </div>
-        <Button size="sm" onClick={() => openDialog(null, "create")}>
+        <Button data-testid="new-invoice-button" size="sm" onClick={() => openDialog(null, "create")}>
           <Plus className="w-4 h-4 mr-1" /> New Invoice
         </Button>
       </div>
@@ -771,6 +837,7 @@ export function ManageInvoicesSection() {
               </TableRow>
             ) : filtered.map((inv: Inv) => (
               <TableRow
+                data-testid={`invoice-row-${inv.id as string}`}
                 key={inv.id as string}
                 className="cursor-pointer hover:bg-secondary/30"
                 onClick={() => openView(inv)}
@@ -792,7 +859,7 @@ export function ManageInvoicesSection() {
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="w-4 h-4" /></Button>
+                      <Button data-testid={`invoice-row-menu-${inv.id as string}`} variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="w-4 h-4" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openView(inv); }}>

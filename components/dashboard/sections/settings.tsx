@@ -481,6 +481,7 @@ interface ProviderStatus {
   stripe: { configured: boolean; secretKey: string; webhookSecret: string };
   xendit: { configured: boolean; secretKey: string; webhookToken: string };
   lemonsqueezy: { configured: boolean; apiKey: string; storeId: string; webhookSecret: string };
+  tax: { configured: boolean; externalProvider: string; taxjarApiKey: string };
 }
 
 interface ProviderField {
@@ -491,11 +492,20 @@ interface ProviderField {
 }
 
 const providerConfigs: {
-  id: "stripe" | "xendit" | "lemonsqueezy";
+  id: "stripe" | "xendit" | "lemonsqueezy" | "tax";
   name: string;
   description: string;
   fields: ProviderField[];
 }[] = [
+  {
+    id: "tax",
+    name: "External Tax Fallback",
+    description: "Optional tax fallback when no local tax rule matches (stripe or taxjar)",
+    fields: [
+      { key: "externalProvider", label: "Provider", placeholder: "stripe or taxjar", sensitive: false },
+      { key: "taxjarApiKey", label: "TaxJar API Key", placeholder: "txjr_live_...", sensitive: true },
+    ],
+  },
   {
     id: "xendit",
     name: "Xendit",
@@ -534,6 +544,7 @@ function PaymentProvidersTab() {
     stripe: {},
     xendit: {},
     lemonsqueezy: {},
+    tax: {},
   });
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 

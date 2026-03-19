@@ -40,6 +40,7 @@ pub async fn start_scheduler(
                         Ok(result) => tracing::info!(
                             trials = result.trials_converted,
                             canceled = result.canceled,
+                            pre_generated = result.pre_generated,
                             renewed = result.renewed,
                             invoices = result.invoices_generated,
                             "Lifecycle cron completed"

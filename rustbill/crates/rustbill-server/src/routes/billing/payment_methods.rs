@@ -3,6 +3,7 @@ use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     routing::{delete, get, post},
     Json, Router,
 };
@@ -13,6 +14,7 @@ use serde::Deserialize;
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", get(list).post(create))
+        .route("/setup", post(create_setup_session))
         .route("/{id}", delete(remove))
         .route("/{id}/default", post(set_default))
 }
@@ -52,6 +54,15 @@ struct CreateRequest {
     set_default: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetupRequest {
+    customer_id: String,
+    provider: PaymentProvider,
+    success_url: Option<String>,
+    cancel_url: Option<String>,
+}
+
 async fn create(
     State(state): State<SharedState>,
     _user: AdminUser,
@@ -75,6 +86,35 @@ async fn create(
     Ok(Json(serde_json::to_value(method).map_err(|e| {
         rustbill_core::error::BillingError::Internal(e.into())
     })?))
+}
+
+async fn create_setup_session(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Json(body): Json<SetupRequest>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let response = match body.provider {
+        PaymentProvider::Stripe => {
+            create_stripe_setup_session(
+                &state,
+                &body.customer_id,
+                body.success_url.as_deref(),
+                body.cancel_url.as_deref(),
+            )
+            .await?
+        }
+        PaymentProvider::Xendit => create_xendit_setup_session(&state, &body.customer_id).await?,
+        PaymentProvider::Lemonsqueezy => {
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "lemonsqueezy setup sessions are not supported; use LS-managed subscription checkout",
+                })),
+            ));
+        }
+    };
+
+    Ok((StatusCode::OK, Json(response)))
 }
 
 async fn remove(
@@ -120,4 +160,119 @@ async fn resolve_customer_id(
     .ok_or_else(|| rustbill_core::error::BillingError::not_found("payment_method", method_id))?;
 
     Ok(customer_id)
+}
+
+async fn create_stripe_setup_session(
+    state: &SharedState,
+    customer_id: &str,
+    success_url: Option<&str>,
+    cancel_url: Option<&str>,
+) -> ApiResult<serde_json::Value> {
+    let secret = state.provider_cache.get("stripe_secret_key").await;
+    if secret.is_empty() {
+        return Err(rustbill_core::error::BillingError::ProviderNotConfigured(
+            "stripe".to_string(),
+        )
+        .into());
+    }
+
+    let success = success_url.unwrap_or("https://example.com/billing/payment-methods/success");
+    let cancel = cancel_url.unwrap_or("https://example.com/billing/payment-methods/cancel");
+
+    let form = vec![
+        ("mode", "setup".to_string()),
+        ("success_url", success.to_string()),
+        ("cancel_url", cancel.to_string()),
+        ("payment_method_types[0]", "card".to_string()),
+        ("metadata[customer_id]", customer_id.to_string()),
+    ];
+
+    let resp = reqwest::Client::new()
+        .post("https://api.stripe.com/v1/checkout/sessions")
+        .bearer_auth(secret)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|e| {
+            rustbill_core::error::BillingError::Internal(anyhow::anyhow!(
+                "stripe setup request failed: {e}"
+            ))
+        })?;
+
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.map_err(|e| {
+        rustbill_core::error::BillingError::Internal(anyhow::anyhow!(
+            "stripe setup parse failed: {e}"
+        ))
+    })?;
+
+    if !status.is_success() {
+        let msg = body["error"]["message"]
+            .as_str()
+            .unwrap_or("stripe setup failed")
+            .to_string();
+        return Err(rustbill_core::error::BillingError::BadRequest(msg).into());
+    }
+
+    Ok(serde_json::json!({
+        "provider": "stripe",
+        "customerId": customer_id,
+        "setupUrl": body["url"],
+        "sessionId": body["id"],
+    }))
+}
+
+async fn create_xendit_setup_session(
+    state: &SharedState,
+    customer_id: &str,
+) -> ApiResult<serde_json::Value> {
+    let secret = state.provider_cache.get("xendit_secret_key").await;
+    if secret.is_empty() {
+        return Err(rustbill_core::error::BillingError::ProviderNotConfigured(
+            "xendit".to_string(),
+        )
+        .into());
+    }
+
+    let body = serde_json::json!({
+        "type": "CARD",
+        "reusability": "MULTIPLE_USE",
+        "metadata": {
+            "customer_id": customer_id,
+        }
+    });
+
+    let resp = reqwest::Client::new()
+        .post("https://api.xendit.co/payment_methods")
+        .basic_auth(secret, Some(""))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| {
+            rustbill_core::error::BillingError::Internal(anyhow::anyhow!(
+                "xendit setup request failed: {e}"
+            ))
+        })?;
+
+    let status = resp.status();
+    let payload: serde_json::Value = resp.json().await.map_err(|e| {
+        rustbill_core::error::BillingError::Internal(anyhow::anyhow!(
+            "xendit setup parse failed: {e}"
+        ))
+    })?;
+
+    if !status.is_success() {
+        let msg = payload["message"]
+            .as_str()
+            .unwrap_or("xendit setup failed")
+            .to_string();
+        return Err(rustbill_core::error::BillingError::BadRequest(msg).into());
+    }
+
+    Ok(serde_json::json!({
+        "provider": "xendit",
+        "customerId": customer_id,
+        "setupId": payload["id"],
+        "actions": payload["actions"],
+    }))
 }

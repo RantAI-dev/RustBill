@@ -116,6 +116,8 @@ impl ProviderSettingsCache {
         let ls_key = self.get("lemonsqueezy_api_key").await;
         let ls_store = self.get("lemonsqueezy_store_id").await;
         let ls_webhook = self.get("lemonsqueezy_webhook_secret").await;
+        let external_tax_provider = self.get("external_tax_provider").await;
+        let taxjar_api_key = self.get("taxjar_api_key").await;
 
         ProviderStatus {
             stripe: ProviderInfo {
@@ -123,16 +125,21 @@ impl ProviderSettingsCache {
                 secret_key: mask_value(&stripe_key),
                 webhook_secret: mask_value(&stripe_webhook),
             },
-            xendit: ProviderInfo {
+            xendit: XenditProviderInfo {
                 configured: !xendit_key.is_empty(),
                 secret_key: mask_value(&xendit_key),
-                webhook_secret: mask_value(&xendit_token),
+                webhook_token: mask_value(&xendit_token),
             },
             lemonsqueezy: LsProviderInfo {
                 configured: !ls_key.is_empty() && !ls_store.is_empty(),
                 api_key: mask_value(&ls_key),
                 store_id: ls_store,
                 webhook_secret: mask_value(&ls_webhook),
+            },
+            tax: TaxProviderInfo {
+                configured: !external_tax_provider.is_empty(),
+                external_provider: external_tax_provider,
+                taxjar_api_key: mask_value(&taxjar_api_key),
             },
         }
     }
@@ -156,8 +163,9 @@ fn mask_value(value: &str) -> String {
 #[derive(Debug, serde::Serialize)]
 pub struct ProviderStatus {
     pub stripe: ProviderInfo,
-    pub xendit: ProviderInfo,
+    pub xendit: XenditProviderInfo,
     pub lemonsqueezy: LsProviderInfo,
+    pub tax: TaxProviderInfo,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -170,9 +178,25 @@ pub struct ProviderInfo {
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct XenditProviderInfo {
+    pub configured: bool,
+    pub secret_key: String,
+    pub webhook_token: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LsProviderInfo {
     pub configured: bool,
     pub api_key: String,
     pub store_id: String,
     pub webhook_secret: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaxProviderInfo {
+    pub configured: bool,
+    pub external_provider: String,
+    pub taxjar_api_key: String,
 }

@@ -8,6 +8,8 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use rustbill_core::error::BillingError;
+use sqlx::PgPool;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -56,24 +58,138 @@ async fn create(
     _user: AdminUser,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let customer_id = body["customerId"]
+        .as_str()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| BillingError::BadRequest("customerId is required".to_string()))?;
+
+    let status = body["status"].as_str().unwrap_or("draft");
+    let currency = body["currency"].as_str().unwrap_or("USD");
+    let tax = body["tax"].as_f64().unwrap_or(0.0);
+
+    let mut subtotal = body["subtotal"].as_f64().unwrap_or(0.0);
+    if subtotal <= 0.0 {
+        let items_total = body["items"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .map(|item| {
+                        let qty = item["quantity"].as_f64().unwrap_or(1.0);
+                        let unit_price = item["unitPrice"]
+                            .as_f64()
+                            .or_else(|| item["unit_price"].as_f64())
+                            .unwrap_or(0.0);
+                        qty * unit_price
+                    })
+                    .sum::<f64>()
+            })
+            .unwrap_or(0.0);
+        subtotal = items_total;
+    }
+
+    let total = body["total"].as_f64().unwrap_or(subtotal + tax);
+
+    let invoice_number = generate_invoice_number(&state.db).await?;
+
+    let mut tx = state
+        .db
+        .begin()
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?;
+
     let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO invoices (id, invoice_number, customer_id, subscription_id, status, currency, subtotal, tax, total, due_at, notes, created_at, updated_at)
-           VALUES (gen_random_uuid()::text, 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0'), $1, $2, 'draft', COALESCE($3, 'USD'), $4, $5, $6, $7::timestamp, $8, now(), now())
+        r#"INSERT INTO invoices (id, invoice_number, customer_id, subscription_id, status, currency, subtotal, tax, total, due_at, issued_at, notes, created_at, updated_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4::invoice_status, $5, $6, $7, $8, $9::timestamp, $10::timestamp, $11, now(), now())
            RETURNING to_jsonb(invoices.*)"#,
     )
-    .bind(body["customerId"].as_str())
+    .bind(invoice_number)
+    .bind(customer_id)
     .bind(body["subscriptionId"].as_str())
-    .bind(body["currency"].as_str())
-    .bind(body["subtotal"].as_f64().unwrap_or(0.0))
-    .bind(body["tax"].as_f64().unwrap_or(0.0))
-    .bind(body["total"].as_f64().unwrap_or(0.0))
+    .bind(status)
+    .bind(currency)
+    .bind(subtotal)
+    .bind(tax)
+    .bind(total)
     .bind(body["dueAt"].as_str())
+    .bind(body["issuedAt"].as_str())
     .bind(body["notes"].as_str())
-    .fetch_one(&state.db)
+    .fetch_one(&mut *tx)
     .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    .map_err(|err| {
+        tracing::error!(error = ?err, customer_id = %customer_id, "Invoice create insert failed");
+        rustbill_core::error::BillingError::from(err)
+    })?;
+
+    let invoice_id = row["id"].as_str().unwrap_or_default().to_string();
+
+    if let Some(items) = body["items"].as_array() {
+        for item in items {
+            let description = item["description"]
+                .as_str()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let Some(description) = description else {
+                continue;
+            };
+
+            let quantity = item["quantity"].as_f64().unwrap_or(1.0);
+            let unit_price = item["unitPrice"]
+                .as_f64()
+                .or_else(|| item["unit_price"].as_f64())
+                .unwrap_or(0.0);
+            let amount = item["amount"].as_f64().unwrap_or(quantity * unit_price);
+
+            sqlx::query(
+                r#"INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, amount, period_start, period_end)
+                   VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NULL, NULL)"#,
+            )
+            .bind(&invoice_id)
+            .bind(description)
+            .bind(quantity)
+            .bind(unit_price)
+            .bind(amount)
+            .execute(&mut *tx)
+            .await
+            .map_err(|err| {
+                tracing::error!(error = ?err, invoice_id = %invoice_id, "Invoice item insert failed");
+                rustbill_core::error::BillingError::from(err)
+            })?;
+        }
+    }
+
+    tx.commit().await.map_err(|err| {
+        tracing::error!(error = ?err, "Invoice create commit failed");
+        rustbill_core::error::BillingError::from(err)
+    })?;
 
     Ok((StatusCode::CREATED, Json(row)))
+}
+
+async fn generate_invoice_number(db: &PgPool) -> Result<String, BillingError> {
+    let from_sequence = sqlx::query_scalar::<_, String>(
+        "SELECT 'INV-' || LPAD(nextval('invoice_number_seq')::text, 8, '0')",
+    )
+    .fetch_one(db)
+    .await;
+
+    match from_sequence {
+        Ok(value) => Ok(value),
+        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("42P01") => {
+            let next: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COALESCE(MAX(NULLIF(regexp_replace(invoice_number, '[^0-9]', '', 'g'), '')::bigint), 0) + 1
+                FROM invoices
+                "#,
+            )
+            .fetch_one(db)
+            .await
+            .map_err(BillingError::from)?;
+
+            Ok(format!("INV-{next:08}"))
+        }
+        Err(err) => Err(BillingError::from(err)),
+    }
 }
 
 async fn update(

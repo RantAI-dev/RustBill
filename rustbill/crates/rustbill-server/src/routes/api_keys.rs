@@ -41,18 +41,32 @@ async fn create(
     let key_plain = rustbill_core::auth::generate_api_key();
     let hashed = rustbill_core::auth::hash_api_key(&key_plain);
 
-    let row = sqlx::query_scalar::<_, serde_json::Value>(
-        r#"INSERT INTO api_keys (id, name, customer_id, key_prefix, key_hash, created_at)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, now())
-           RETURNING to_jsonb(api_keys.*) - 'key_hash'"#,
-    )
-    .bind(name)
-    .bind(customer_id)
-    .bind(&key_plain[..12])
-    .bind(&hashed)
-    .fetch_one(&state.db)
-    .await
-    .map_err(rustbill_core::error::BillingError::from)?;
+    let row = if let Some(customer_id) = customer_id {
+        sqlx::query_scalar::<_, serde_json::Value>(
+            r#"INSERT INTO api_keys (id, name, customer_id, key_prefix, key_hash, created_at)
+               VALUES (gen_random_uuid()::text, $1, $2, $3, $4, now())
+               RETURNING to_jsonb(api_keys.*) - 'key_hash'"#,
+        )
+        .bind(name)
+        .bind(customer_id)
+        .bind(&key_plain[..12])
+        .bind(&hashed)
+        .fetch_one(&state.db)
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?
+    } else {
+        sqlx::query_scalar::<_, serde_json::Value>(
+            r#"INSERT INTO api_keys (id, name, key_prefix, key_hash, created_at)
+               VALUES (gen_random_uuid()::text, $1, $2, $3, now())
+               RETURNING to_jsonb(api_keys.*) - 'key_hash'"#,
+        )
+        .bind(name)
+        .bind(&key_plain[..12])
+        .bind(&hashed)
+        .fetch_one(&state.db)
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?
+    };
 
     // Return the plain key only on creation
     let mut result = row;

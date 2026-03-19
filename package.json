@@ -15,7 +15,11 @@
     "db:migrate-money": "bun run lib/db/migrate-money-columns.ts",
     "db:migrate-checks": "bun run lib/db/migrate-check-constraints.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "test:e2e:full": "playwright test --grep @core",
+    "test:e2e:providers": "playwright test --grep @provider"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -81,6 +85,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.9",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

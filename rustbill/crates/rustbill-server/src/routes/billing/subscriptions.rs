@@ -67,6 +67,8 @@ async fn create(
     _user: AdminUser,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let metadata = merged_subscription_metadata(&body)?;
+
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO subscriptions (id, customer_id, plan_id, status, current_period_start, current_period_end, quantity, metadata, cancel_at_period_end, version, created_at, updated_at)
            VALUES (gen_random_uuid()::text, $1, $2, 'active', now(), now() + interval '1 month', COALESCE($3, 1), $4, false, 1, now(), now())
@@ -75,7 +77,7 @@ async fn create(
     .bind(body["customerId"].as_str())
     .bind(body["planId"].as_str())
     .bind(body["quantity"].as_i64().map(|v| v as i32))
-    .bind(body.get("metadata").unwrap_or(&serde_json::json!({})))
+    .bind(metadata)
     .fetch_one(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?;
@@ -89,6 +91,8 @@ async fn update(
     Path(id): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    let metadata = merged_subscription_metadata_optional(&body)?;
+
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE subscriptions SET
              plan_id = COALESCE($2, plan_id),
@@ -101,7 +105,7 @@ async fn update(
     .bind(&id)
     .bind(body["planId"].as_str())
     .bind(body["status"].as_str())
-    .bind(body.get("metadata"))
+    .bind(metadata)
     .fetch_optional(&state.db)
     .await
     .map_err(rustbill_core::error::BillingError::from)?
@@ -111,6 +115,56 @@ async fn update(
     })?;
 
     Ok(Json(row))
+}
+
+fn merged_subscription_metadata(
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, BillingError> {
+    let base = body
+        .get("metadata")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    merge_pre_renewal_days(base, body)
+}
+
+fn merged_subscription_metadata_optional(
+    body: &serde_json::Value,
+) -> Result<Option<serde_json::Value>, BillingError> {
+    if body.get("metadata").is_none() && body.get("preRenewalInvoiceDays").is_none() {
+        return Ok(None);
+    }
+
+    let base = body
+        .get("metadata")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    Ok(Some(merge_pre_renewal_days(base, body)?))
+}
+
+fn merge_pre_renewal_days(
+    mut metadata: serde_json::Value,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, BillingError> {
+    let Some(days) = body.get("preRenewalInvoiceDays").and_then(|v| v.as_i64()) else {
+        return Ok(metadata);
+    };
+
+    if !(0..=90).contains(&days) {
+        return Err(BillingError::BadRequest(
+            "preRenewalInvoiceDays must be between 0 and 90".to_string(),
+        ));
+    }
+
+    if !metadata.is_object() {
+        metadata = serde_json::json!({});
+    }
+
+    if let Some(obj) = metadata.as_object_mut() {
+        obj.insert("preRenewalInvoiceDays".to_string(), serde_json::json!(days));
+    }
+
+    Ok(metadata)
 }
 
 async fn remove(

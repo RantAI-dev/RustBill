@@ -30,12 +30,15 @@ const tierColors: Record<string, string> = {
 /* ---------- detail view ---------- */
 
 function CustomerDetail({ customer, onEdit, onDelete }: { customer: Customer; onEdit: () => void; onDelete: () => void }) {
-  const health = customer.healthScore as number;
+  const health = Number((customer.healthScore as number) ?? (customer.health_score as number) ?? 0);
   const t = customer.trend as "up" | "down" | "stable";
   const tConfig = trendConfig[t];
   const TrendIcon = tConfig.icon;
   const tierCls = tierColors[(customer.tier as string)] ?? "bg-secondary text-muted-foreground";
   const products = (customer.products as { type: string; name: string }[]) ?? [];
+  const revenue = Number(
+    (customer.totalRevenue as number | string) ?? (customer.total_revenue as number | string) ?? 0,
+  );
 
   const labelClass = "text-xs text-muted-foreground uppercase tracking-wider";
   const valueClass = "text-sm font-medium text-foreground mt-0.5";
@@ -106,7 +109,7 @@ function CustomerDetail({ customer, onEdit, onDelete }: { customer: Customer; on
             <p className={labelClass}>Revenue</p>
             <p className={cn(valueClass, "flex items-center gap-1.5 text-base")}>
               <DollarSign className="w-4 h-4 text-accent" />
-              ${(customer.totalRevenue as number).toLocaleString()}
+              ${revenue.toLocaleString()}
             </p>
           </div>
           <div>
@@ -228,6 +231,13 @@ function CustomerForm({ customer, onClose, onSuccess }: { customer: Customer | n
       toast.error("Name, industry, and contact are required");
       return;
     }
+
+    const normalizedBillingCountry = billingCountry.trim().toUpperCase();
+    if (normalizedBillingCountry && !/^[A-Z]{2}$/.test(normalizedBillingCountry)) {
+      toast.error("Billing country must be a 2-letter ISO code (e.g. US, ID, SG)");
+      return;
+    }
+
     setSubmitting(true);
     const data = {
       name, industry, tier, location, contact, email, phone,
@@ -236,7 +246,7 @@ function CustomerForm({ customer, onClose, onSuccess }: { customer: Customer | n
       billingCity: billingCity || null,
       billingState: billingState || null,
       billingZip: billingZip || null,
-      billingCountry: billingCountry || null,
+      billingCountry: normalizedBillingCountry || null,
       taxId: taxId || null,
       defaultPaymentMethod: defaultPaymentMethod || null,
     };

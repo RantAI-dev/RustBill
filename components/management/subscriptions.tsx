@@ -23,6 +23,16 @@ const statusColors: Record<string, string> = {
   trialing: "bg-blue-500/20 text-blue-400",
 };
 
+function getPreRenewalInvoiceDays(sub?: Sub): number {
+  if (!sub) return 7;
+  const direct = sub.preRenewalInvoiceDays;
+  if (typeof direct === "number" && Number.isFinite(direct)) return Math.trunc(direct);
+  const metadata = (sub.metadata as Record<string, unknown> | undefined) ?? {};
+  const fromMeta = metadata.preRenewalInvoiceDays ?? metadata.pre_renewal_invoice_days;
+  const num = typeof fromMeta === "number" ? fromMeta : Number(fromMeta);
+  return Number.isFinite(num) ? Math.trunc(num) : 7;
+}
+
 function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
   sub?: Sub;
   mode: DialogMode;
@@ -50,6 +60,7 @@ function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
     currentPeriodEnd: sub?.currentPeriodEnd
       ? new Date(sub.currentPeriodEnd as string).toISOString().split("T")[0]
       : "",
+    preRenewalInvoiceDays: getPreRenewalInvoiceDays(sub),
   });
 
   // Auto-compute period end and status when plan changes (create mode only)
@@ -200,12 +211,44 @@ function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
             )}
           </div>
         </div>
+
+        <div>
+          <label className={labelClass}>Pre-renewal Invoice Lead (days)</label>
+          {isView ? (
+            <p className="text-sm font-medium text-foreground mt-0.5">
+              {form.preRenewalInvoiceDays === 0
+                ? "Disabled"
+                : `${form.preRenewalInvoiceDays} day${form.preRenewalInvoiceDays === 1 ? "" : "s"}`}
+            </p>
+          ) : (
+            <input
+              type="number"
+              min={0}
+              max={90}
+              className={inputClass}
+              value={form.preRenewalInvoiceDays}
+              onChange={(e) => setForm({
+                ...form,
+                preRenewalInvoiceDays: Math.max(0, Math.min(90, Number(e.target.value) || 0)),
+              })}
+            />
+          )}
+          <p className="text-[11px] text-muted-foreground mt-1">
+            0 disables pre-renewal invoice email for this subscription.
+          </p>
+        </div>
       </div>
 
       {!isView && (
         <DialogFooter className="mt-6">
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button disabled={loading} onClick={() => onSubmit(form)}>
+          <Button
+            disabled={loading}
+            onClick={() => onSubmit({
+              ...form,
+              preRenewalInvoiceDays: Math.max(0, Math.min(90, Number(form.preRenewalInvoiceDays) || 0)),
+            })}
+          >
             {loading ? "Saving..." : isCreate ? "Create" : "Save"}
           </Button>
         </DialogFooter>
@@ -301,6 +344,7 @@ export function ManageSubscriptionsSection() {
               <TableHead>Plan</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Qty</TableHead>
+              <TableHead>Invoice Lead</TableHead>
               <TableHead>Period</TableHead>
               <TableHead className="w-10" />
             </TableRow>
@@ -308,7 +352,7 @@ export function ManageSubscriptionsSection() {
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No subscriptions found</TableCell>
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No subscriptions found</TableCell>
               </TableRow>
             ) : filtered.map((sub: Sub) => (
               <TableRow
@@ -324,6 +368,12 @@ export function ManageSubscriptionsSection() {
                   </span>
                 </TableCell>
                 <TableCell>{sub.quantity as number}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {(() => {
+                    const days = getPreRenewalInvoiceDays(sub);
+                    return days === 0 ? "Disabled" : `${days}d`;
+                  })()}
+                </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {new Date(sub.currentPeriodStart as string).toLocaleDateString()} — {new Date(sub.currentPeriodEnd as string).toLocaleDateString()}
                 </TableCell>

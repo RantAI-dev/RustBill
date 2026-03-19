@@ -56,6 +56,7 @@ async fn run_all(
         "lifecycle": {
             "trials_converted": lifecycle_result.trials_converted,
             "canceled": lifecycle_result.canceled,
+            "pre_generated": lifecycle_result.pre_generated,
             "renewed": lifecycle_result.renewed,
             "invoices_generated": lifecycle_result.invoices_generated,
             "errors": lifecycle_result.errors,
@@ -85,6 +86,7 @@ async fn renew_subscriptions(
         "success": true,
         "trials_converted": result.trials_converted,
         "canceled": result.canceled,
+        "pre_generated": result.pre_generated,
         "renewed": result.renewed,
         "invoices_generated": result.invoices_generated,
         "errors": result.errors,

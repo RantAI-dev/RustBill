@@ -190,6 +190,11 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
 
   const inputClass = "w-full h-9 mt-1 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-accent";
 
+  const toNumberOrZero = (value: string) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const handleSubmit = async () => {
     if (!customerId) {
       toast.error("Customer is required");
@@ -200,7 +205,19 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
       return;
     }
     setSubmitting(true);
-    const data: Record<string, unknown> = { customerId, productId, dealType, value, date, notes: notes || null, company: "_", contact: "_", email: "x@x.com", productName: "_", productType: "licensed" as const };
+    const data: Record<string, unknown> = {
+      customerId,
+      productId,
+      dealType,
+      value,
+      date,
+      notes: notes || null,
+      company: (selectedCustomer?.name as string) ?? "Unknown Company",
+      contact: (selectedCustomer?.contact as string) ?? "Unknown Contact",
+      email: (selectedCustomer?.email as string) ?? "unknown@example.com",
+      productName: (selectedProduct?.name as string) ?? "Unknown Product",
+      productType: (selectedProduct?.productType as string) ?? "licensed",
+    };
     if (licenseExpiresAt) data.licenseExpiresAt = licenseExpiresAt;
     if (isEditing) {
       const result = await updateDeal(deal.id as string, data);
@@ -329,7 +346,7 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Value ($)</label>
-          <input type="number" value={value} onChange={(e) => setValue(Number(e.target.value))} className={inputClass} />
+          <input type="number" value={value} onChange={(e) => setValue(toNumberOrZero(e.target.value))} className={inputClass} />
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</label>

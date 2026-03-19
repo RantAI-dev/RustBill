@@ -34,14 +34,83 @@ export type Section =
   | "manage-products" | "manage-deals" | "manage-customers" | "manage-licenses" | "manage-plans" | "manage-subscriptions" | "manage-invoices" | "manage-coupons"
   | "manage-webhooks" | "manage-tax-rules" | "billing-portal";
 
+export type PrimarySection = "dashboard" | "management" | "portal" | "system";
+
+type DashboardView =
+  | "overview"
+  | "products"
+  | "trials"
+  | "deals"
+  | "customers"
+  | "licenses"
+  | "forecasting"
+  | "reports"
+  | "billing";
+
+const dashboardViews: { id: DashboardView; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "products", label: "Products" },
+  { id: "trials", label: "Trials" },
+  { id: "deals", label: "Deals" },
+  { id: "customers", label: "Customers" },
+  { id: "licenses", label: "Licenses" },
+  { id: "forecasting", label: "Forecasting" },
+  { id: "reports", label: "Reports" },
+  { id: "billing", label: "Billing" },
+];
+
+function isDashboardView(section: Section): section is DashboardView {
+  return dashboardViews.some((view) => view.id === section);
+}
+
+function getPrimarySection(section: Section): PrimarySection {
+  if (isDashboardView(section)) return "dashboard";
+  if (section.startsWith("manage-")) return "management";
+  if (section === "billing-portal") return "portal";
+  return "system";
+}
+
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [lastDashboardView, setLastDashboardView] = useState<DashboardView>("overview");
 
   // Open search palette programmatically (from header button click)
   const openSearch = useCallback(() => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
   }, []);
+
+  const activePrimary = getPrimarySection(activeSection);
+
+  const handleSectionChange = useCallback((section: Section) => {
+    setActiveSection(section);
+    if (isDashboardView(section)) {
+      setLastDashboardView(section);
+    }
+  }, []);
+
+  const handlePrimaryChange = useCallback((primary: PrimarySection) => {
+    if (primary === "dashboard") {
+      setActiveSection(lastDashboardView);
+      return;
+    }
+
+    if (primary === "management") {
+      setActiveSection((current) =>
+        current.startsWith("manage-") ? current : "manage-products"
+      );
+      return;
+    }
+
+    if (primary === "portal") {
+      setActiveSection("billing-portal");
+      return;
+    }
+
+    setActiveSection((current) =>
+      current === "settings" || current === "api-docs" ? current : "settings"
+    );
+  }, [lastDashboardView]);
 
   const renderSection = () => {
     switch (activeSection) {
@@ -99,7 +168,9 @@ export default function Dashboard() {
     <div className="flex min-h-screen bg-background">
       <Sidebar
         activeSection={activeSection}
-        onSectionChange={setActiveSection}
+        activePrimary={activePrimary}
+        onSectionChange={handleSectionChange}
+        onDashboardClick={() => handlePrimaryChange("dashboard")}
         collapsed={sidebarCollapsed}
         onCollapsedChange={setSidebarCollapsed}
       />
@@ -109,7 +180,13 @@ export default function Dashboard() {
         }`}
       >
         <BackendBanner />
-        <Header activeSection={activeSection} onOpenSearch={openSearch} />
+        <Header
+          activeSection={activeSection}
+          activePrimary={activePrimary}
+          dashboardViews={dashboardViews}
+          onDashboardViewChange={handleSectionChange}
+          onOpenSearch={openSearch}
+        />
         <main className="flex-1 p-6 overflow-auto">
           <div
             key={activeSection}
@@ -119,7 +196,7 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
-      <CommandPalette onNavigate={setActiveSection} />
+      <CommandPalette onNavigate={handleSectionChange} />
     </div>
     </ApiProvider>
   );

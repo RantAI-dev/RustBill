@@ -10,7 +10,7 @@ interface ProductTypeBadgeProps {
 }
 
 export function ProductTypeBadge({ type, size = "sm", className }: ProductTypeBadgeProps) {
-  const config = productTypeConfig[type];
+  const config = productTypeConfig[type] ?? productTypeConfig.licensed;
   return (
     <span
       className={cn(

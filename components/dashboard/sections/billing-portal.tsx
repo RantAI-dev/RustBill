@@ -6,7 +6,7 @@ import { Download, FileText, CreditCard, Activity, ChevronDown, ExternalLink, Lo
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { useCustomers, useInvoices, useSubscriptions, useBillingEvents, useCustomerCredits, useSavedPaymentMethods, deletePaymentMethod, setDefaultPaymentMethod, getInvoicePdfUrl, getCheckout } from "@/hooks/use-api";
+import { useCustomers, useInvoices, useSubscriptions, useBillingEvents, useCustomerCredits, useSavedPaymentMethods, deletePaymentMethod, setDefaultPaymentMethod, createPaymentMethodSetup, getInvoicePdfUrl, getCheckout } from "@/hooks/use-api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
@@ -48,6 +48,15 @@ const eventTypeLabels: Record<string, string> = {
 
 type PaymentProvider = "stripe" | "xendit" | "lemonsqueezy";
 
+function getSubPreRenewalInvoiceDays(sub: Record<string, unknown>): number {
+  const direct = sub.preRenewalInvoiceDays;
+  if (typeof direct === "number" && Number.isFinite(direct)) return Math.trunc(direct);
+  const metadata = (sub.metadata as Record<string, unknown> | undefined) ?? {};
+  const fromMeta = metadata.preRenewalInvoiceDays ?? metadata.pre_renewal_invoice_days;
+  const num = typeof fromMeta === "number" ? fromMeta : Number(fromMeta);
+  return Number.isFinite(num) ? Math.trunc(num) : 7;
+}
+
 const providerInfo: Record<PaymentProvider, { label: string; description: string }> = {
   xendit: { label: "Xendit", description: "Bank transfer, e-wallet, QRIS, VA (Indonesia)" },
   lemonsqueezy: { label: "Lemonsqueezy", description: "International cards, PayPal (Global)" },
@@ -72,6 +81,7 @@ export function BillingPortalSection() {
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payInvoice, setPayInvoice] = useState<Record<string, unknown> | null>(null);
   const [payingWith, setPayingWith] = useState<PaymentProvider | null>(null);
+  const [creatingSetupFor, setCreatingSetupFor] = useState<PaymentProvider | null>(null);
 
   // Auto-select first customer
   const effectiveCustomerId = selectedCustomerId || (customers[0]?.id as string) || "";
@@ -117,12 +127,48 @@ export function BillingPortalSection() {
     }
   };
 
+  const handleAddPaymentMethod = async (provider: PaymentProvider) => {
+    if (!effectiveCustomerId) {
+      toast.error("Select a customer first");
+      return;
+    }
+    setCreatingSetupFor(provider);
+    const result = await createPaymentMethodSetup({
+      customerId: effectiveCustomerId,
+      provider,
+      successUrl: `${window.location.origin}/dashboard/billing/payment-methods/success`,
+      cancelUrl: `${window.location.origin}/dashboard/billing/payment-methods/cancel`,
+    });
+    setCreatingSetupFor(null);
+
+    if (!result.success) {
+      toast.error(result.error ?? "Failed to start setup");
+      return;
+    }
+
+    const data = result.data as Record<string, unknown>;
+    const setupUrl = data.setupUrl as string | undefined;
+    if (setupUrl) {
+      window.open(setupUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const actions = data.actions as Array<{ url?: string }> | undefined;
+    const actionUrl = actions?.find((a) => typeof a?.url === "string")?.url;
+    if (actionUrl) {
+      window.open(actionUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    toast.success("Setup session created");
+  };
+
   // Filter data by customer
   const invoices = ((allInvoices ?? []) as Record<string, unknown>[]).filter(
-    (i) => (i.customerId as string) === effectiveCustomerId
+    (i) => ((i.customerId as string) ?? (i.customer_id as string)) === effectiveCustomerId
   );
   const subs = ((allSubs ?? []) as Record<string, unknown>[]).filter(
-    (s) => (s.customerId as string) === effectiveCustomerId
+    (s) => ((s.customerId as string) ?? (s.customer_id as string)) === effectiveCustomerId
   );
   const methods = (paymentMethods ?? []) as Record<string, unknown>[];
 
@@ -318,12 +364,21 @@ export function BillingPortalSection() {
                     <div>
                       <p className="text-[10px] text-muted-foreground uppercase">Period</p>
                       <p className="text-sm text-foreground">
-                        {new Date(sub.currentPeriodStart as string).toLocaleDateString()} — {new Date(sub.currentPeriodEnd as string).toLocaleDateString()}
+                        {new Date(((sub.currentPeriodStart as string) ?? (sub.current_period_start as string))).toLocaleDateString()} — {new Date(((sub.currentPeriodEnd as string) ?? (sub.current_period_end as string))).toLocaleDateString()}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground uppercase">Quantity</p>
                       <p className="text-sm text-foreground">{sub.quantity as number}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase">Invoice Lead</p>
+                      <p className="text-sm text-foreground">
+                        {(() => {
+                          const days = getSubPreRenewalInvoiceDays(sub);
+                          return days === 0 ? "Disabled" : `${days} day${days === 1 ? "" : "s"}`;
+                        })()}
+                      </p>
                     </div>
                   </div>
                   {!!sub.cancelAtPeriodEnd && (
@@ -338,6 +393,24 @@ export function BillingPortalSection() {
 
       {tab === "payment-methods" && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-border bg-secondary/20 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Add a tokenized payment method via provider setup flow.</p>
+            <div className="flex items-center gap-2">
+              {(["stripe", "xendit"] as const).map((provider) => (
+                <Button
+                  key={provider}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => handleAddPaymentMethod(provider)}
+                  disabled={creatingSetupFor !== null}
+                >
+                  {creatingSetupFor === provider ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : null}
+                  Add via {providerInfo[provider].label}
+                </Button>
+              ))}
+            </div>
+          </div>
           {loadingPaymentMethods ? (
             <div className="p-6 space-y-3">
               {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-lg" />)}

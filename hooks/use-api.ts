@@ -32,6 +32,248 @@ type MutationResult<T = unknown> =
   | { success: true; data: T }
   | { success: false; error: string; status?: number };
 
+function toDecimalString(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return undefined;
+  return String(num);
+}
+
+function toInt(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return undefined;
+  return Math.trunc(num);
+}
+
+function toRustProductPayload(data: Record<string, unknown>): Record<string, unknown> {
+  const productType = (data.productType as string) ?? (data.product_type as string);
+  return {
+    name: data.name,
+    product_type: productType,
+    target: toDecimalString(data.target),
+    revenue: toDecimalString(data.revenue),
+    change: toDecimalString(data.change),
+    units_sold: toInt(data.unitsSold ?? data.units_sold),
+    active_licenses: toInt(data.activeLicenses ?? data.active_licenses),
+    total_licenses: toInt(data.totalLicenses ?? data.total_licenses),
+    mau: toInt(data.mau),
+    dau: toInt(data.dau),
+    free_users: toInt(data.freeUsers ?? data.free_users),
+    paid_users: toInt(data.paidUsers ?? data.paid_users),
+    churn_rate: toDecimalString(data.churnRate ?? data.churn_rate),
+    api_calls: toInt(data.apiCalls ?? data.api_calls),
+    active_developers: toInt(data.activeDevelopers ?? data.active_developers),
+    avg_latency: toDecimalString(data.avgLatency ?? data.avg_latency),
+  };
+}
+
+function fromRustProduct(product: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...product,
+    productType: (product.product_type as string) ?? product.productType,
+    unitsSold: (product.units_sold as number) ?? product.unitsSold,
+    activeLicenses: (product.active_licenses as number) ?? product.activeLicenses,
+    totalLicenses: (product.total_licenses as number) ?? product.totalLicenses,
+    freeUsers: (product.free_users as number) ?? product.freeUsers,
+    paidUsers: (product.paid_users as number) ?? product.paidUsers,
+    churnRate: (product.churn_rate as number | string) ?? product.churnRate,
+    apiCalls: (product.api_calls as number) ?? product.apiCalls,
+    activeDevelopers: (product.active_developers as number) ?? product.activeDevelopers,
+    avgLatency: (product.avg_latency as number | string) ?? product.avgLatency,
+    createdAt: (product.created_at as string) ?? product.createdAt,
+    updatedAt: (product.updated_at as string) ?? product.updatedAt,
+  };
+}
+
+function toRustCustomerPayload(data: Record<string, unknown>): Record<string, unknown> {
+  return {
+    name: data.name,
+    industry: data.industry,
+    tier: data.tier,
+    location: data.location,
+    contact: data.contact,
+    email: data.email,
+    phone: data.phone,
+    billing_email: data.billingEmail ?? data.billing_email ?? null,
+    billing_address: data.billingAddress ?? data.billing_address ?? null,
+    billing_city: data.billingCity ?? data.billing_city ?? null,
+    billing_state: data.billingState ?? data.billing_state ?? null,
+    billing_zip: data.billingZip ?? data.billing_zip ?? null,
+    billing_country: data.billingCountry ?? data.billing_country ?? null,
+    tax_id: data.taxId ?? data.tax_id ?? null,
+    default_payment_method: data.defaultPaymentMethod ?? data.default_payment_method ?? null,
+    stripe_customer_id: data.stripeCustomerId ?? data.stripe_customer_id ?? null,
+    xendit_customer_id: data.xenditCustomerId ?? data.xendit_customer_id ?? null,
+  };
+}
+
+function fromRustCustomer(customer: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...customer,
+    totalRevenue: Number((customer.total_revenue as number | string) ?? customer.totalRevenue ?? 0),
+    healthScore: Number((customer.health_score as number | string) ?? customer.healthScore ?? 0),
+    lastContact: (customer.last_contact as string) ?? customer.lastContact,
+    billingEmail: (customer.billing_email as string) ?? customer.billingEmail,
+    billingAddress: (customer.billing_address as string) ?? customer.billingAddress,
+    billingCity: (customer.billing_city as string) ?? customer.billingCity,
+    billingState: (customer.billing_state as string) ?? customer.billingState,
+    billingZip: (customer.billing_zip as string) ?? customer.billingZip,
+    billingCountry: (customer.billing_country as string) ?? customer.billingCountry,
+    taxId: (customer.tax_id as string) ?? customer.taxId,
+    defaultPaymentMethod:
+      (customer.default_payment_method as string) ?? customer.defaultPaymentMethod,
+    stripeCustomerId: (customer.stripe_customer_id as string) ?? customer.stripeCustomerId,
+    xenditCustomerId: (customer.xendit_customer_id as string) ?? customer.xenditCustomerId,
+    createdAt: (customer.created_at as string) ?? customer.createdAt,
+    updatedAt: (customer.updated_at as string) ?? customer.updatedAt,
+  };
+}
+
+function toRustDealPayload(data: Record<string, unknown>): Record<string, unknown> {
+  const numericValue = (() => {
+    const n = Number(data.value);
+    return Number.isFinite(n) ? n : 0;
+  })();
+  return {
+    customerId: data.customerId ?? data.customer_id ?? null,
+    customer_id: data.customerId ?? data.customer_id ?? null,
+    company: data.company ?? null,
+    contact: data.contact ?? null,
+    email: data.email ?? null,
+    value: numericValue,
+    productId: data.productId ?? data.product_id ?? null,
+    product_id: data.productId ?? data.product_id ?? null,
+    productName: data.productName ?? data.product_name ?? null,
+    product_name: data.productName ?? data.product_name ?? null,
+    productType: data.productType ?? data.product_type ?? null,
+    product_type: data.productType ?? data.product_type ?? null,
+    dealType: data.dealType ?? data.deal_type ?? "sale",
+    deal_type: data.dealType ?? data.deal_type ?? "sale",
+    date: data.date ?? null,
+    licenseKey: data.licenseKey ?? data.license_key ?? null,
+    license_key: data.licenseKey ?? data.license_key ?? null,
+    notes: data.notes ?? null,
+    usageMetricLabel: data.usageMetricLabel ?? data.usage_metric_label ?? null,
+    usage_metric_label: data.usageMetricLabel ?? data.usage_metric_label ?? null,
+    usageMetricValue: toInt(data.usageMetricValue ?? data.usage_metric_value),
+    usage_metric_value: toInt(data.usageMetricValue ?? data.usage_metric_value),
+  };
+}
+
+function fromRustDeal(deal: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...deal,
+    customerId: (deal.customer_id as string) ?? deal.customerId,
+    productId: (deal.product_id as string) ?? deal.productId,
+    productName: (deal.product_name as string) ?? deal.productName,
+    productType: (deal.product_type as string) ?? deal.productType,
+    dealType: (deal.deal_type as string) ?? deal.dealType,
+    licenseKey: (deal.license_key as string) ?? deal.licenseKey,
+    usageMetricLabel:
+      (deal.usage_metric_label as string) ?? deal.usageMetricLabel,
+    usageMetricValue:
+      (deal.usage_metric_value as number) ?? deal.usageMetricValue,
+    createdAt: (deal.created_at as string) ?? deal.createdAt,
+    updatedAt: (deal.updated_at as string) ?? deal.updatedAt,
+  };
+}
+
+function extractPreRenewalInvoiceDays(metadata: unknown): number | undefined {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const obj = metadata as Record<string, unknown>;
+  const raw = obj.preRenewalInvoiceDays ?? obj.pre_renewal_invoice_days;
+  const num = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(num)) return undefined;
+  return Math.trunc(num);
+}
+
+function fromRustSubscription(sub: Record<string, unknown>): Record<string, unknown> {
+  const metadata = (sub.metadata ?? {}) as Record<string, unknown>;
+  return {
+    ...sub,
+    customerId: (sub.customer_id as string) ?? sub.customerId,
+    planId: (sub.plan_id as string) ?? sub.planId,
+    currentPeriodStart: (sub.current_period_start as string) ?? sub.currentPeriodStart,
+    currentPeriodEnd: (sub.current_period_end as string) ?? sub.currentPeriodEnd,
+    cancelAtPeriodEnd: (sub.cancel_at_period_end as boolean) ?? sub.cancelAtPeriodEnd,
+    trialEnd: (sub.trial_end as string) ?? sub.trialEnd,
+    stripeSubscriptionId: (sub.stripe_subscription_id as string) ?? sub.stripeSubscriptionId,
+    createdAt: (sub.created_at as string) ?? sub.createdAt,
+    updatedAt: (sub.updated_at as string) ?? sub.updatedAt,
+    metadata,
+    preRenewalInvoiceDays: extractPreRenewalInvoiceDays(metadata),
+  };
+}
+
+function fromRustPlan(plan: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...plan,
+    productId: (plan.product_id as string) ?? plan.productId,
+    pricingModel: (plan.pricing_model as string) ?? plan.pricingModel,
+    billingCycle: (plan.billing_cycle as string) ?? plan.billingCycle,
+    basePrice: Number((plan.base_price as number | string) ?? plan.basePrice ?? 0),
+    unitPrice: Number((plan.unit_price as number | string) ?? plan.unitPrice ?? 0),
+    usageMetricName: (plan.usage_metric_name as string) ?? plan.usageMetricName,
+    trialDays: Number((plan.trial_days as number | string) ?? plan.trialDays ?? 0),
+    createdAt: (plan.created_at as string) ?? plan.createdAt,
+    updatedAt: (plan.updated_at as string) ?? plan.updatedAt,
+  };
+}
+
+function fromRustInvoiceItem(item: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...item,
+    invoiceId: (item.invoice_id as string) ?? item.invoiceId,
+    unitPrice: Number((item.unit_price as number | string) ?? item.unitPrice ?? 0),
+    periodStart: (item.period_start as string) ?? item.periodStart,
+    periodEnd: (item.period_end as string) ?? item.periodEnd,
+    createdAt: (item.created_at as string) ?? item.createdAt,
+    updatedAt: (item.updated_at as string) ?? item.updatedAt,
+  };
+}
+
+function fromRustPayment(payment: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...payment,
+    customerId: (payment.customer_id as string) ?? payment.customerId,
+    invoiceId: (payment.invoice_id as string) ?? payment.invoiceId,
+    providerReference: (payment.provider_reference as string) ?? payment.providerReference,
+    paidAt: (payment.paid_at as string) ?? payment.paidAt,
+    createdAt: (payment.created_at as string) ?? payment.createdAt,
+    updatedAt: (payment.updated_at as string) ?? payment.updatedAt,
+  };
+}
+
+function fromRustInvoice(inv: Record<string, unknown>): Record<string, unknown> {
+  const items = Array.isArray(inv.items)
+    ? (inv.items as Record<string, unknown>[]).map((item) => fromRustInvoiceItem(item))
+    : [];
+  const payments = Array.isArray(inv.payments)
+    ? (inv.payments as Record<string, unknown>[]).map((payment) => fromRustPayment(payment))
+    : [];
+
+  return {
+    ...inv,
+    invoiceNumber: (inv.invoice_number as string) ?? inv.invoiceNumber,
+    customerId: (inv.customer_id as string) ?? inv.customerId,
+    customerName: (inv.customer_name as string) ?? inv.customerName,
+    subscriptionId: (inv.subscription_id as string) ?? inv.subscriptionId,
+    issuedAt: (inv.issued_at as string) ?? inv.issuedAt,
+    dueAt: (inv.due_at as string) ?? inv.dueAt,
+    paidAt: (inv.paid_at as string) ?? inv.paidAt,
+    taxName: (inv.tax_name as string) ?? inv.taxName,
+    taxRate: Number((inv.tax_rate as number | string) ?? inv.taxRate ?? 0),
+    taxInclusive: (inv.tax_inclusive as boolean) ?? inv.taxInclusive,
+    amountDue: Number((inv.amount_due as number | string) ?? inv.amountDue ?? 0),
+    creditsApplied: Number((inv.credits_applied as number | string) ?? inv.creditsApplied ?? 0),
+    createdAt: (inv.created_at as string) ?? inv.createdAt,
+    updatedAt: (inv.updated_at as string) ?? inv.updatedAt,
+    items,
+    payments,
+  };
+}
+
 async function mutate<T = unknown>(
   url: string,
   options: RequestInit,
@@ -44,7 +286,19 @@ async function mutate<T = unknown>(
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: errorMessage }));
-      const msg = body.error ?? errorMessage;
+      let msg = body.error ?? errorMessage;
+      if (typeof msg !== "string") {
+        const fieldErrors = (body?.error as { fieldErrors?: Record<string, string[]> } | undefined)?.fieldErrors;
+        const firstField = fieldErrors
+          ? Object.entries(fieldErrors).find(([, errs]) => Array.isArray(errs) && errs.length > 0)
+          : undefined;
+        if (firstField) {
+          const [field, errs] = firstField;
+          msg = `${field}: ${errs[0]}`;
+        } else {
+          msg = errorMessage;
+        }
+      }
       toast.error(msg);
       return { success: false, error: msg, status: res.status };
     }
@@ -97,13 +351,24 @@ function ApiProviderInner({ children }: { children: React.ReactNode }) {
 
 // ---- Products ----
 export function useProducts() {
-  return useSWR("/api/products", fetcher);
+  return useSWR("/api/products", async (url: string) => {
+    const rows = (await fetcher(url)) as Record<string, unknown>[];
+    return rows.map(fromRustProduct);
+  });
 }
 export async function createProduct(data: Record<string, unknown>) {
-  return mutate("/api/products", { method: "POST", body: JSON.stringify(data) }, "Failed to create product");
+  return mutate(
+    "/api/products",
+    { method: "POST", body: JSON.stringify(toRustProductPayload(data)) },
+    "Failed to create product",
+  );
 }
 export async function updateProduct(id: string, data: Record<string, unknown>) {
-  return mutate(`/api/products/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update product");
+  return mutate(
+    `/api/products/${id}`,
+    { method: "PUT", body: JSON.stringify(toRustProductPayload(data)) },
+    "Failed to update product",
+  );
 }
 export async function deleteProduct(id: string) {
   return mutate(`/api/products/${id}`, { method: "DELETE" }, "Failed to delete product");
@@ -111,13 +376,24 @@ export async function deleteProduct(id: string) {
 
 // ---- Deals ----
 export function useDeals() {
-  return useSWR("/api/deals", fetcher);
+  return useSWR("/api/deals", async (url: string) => {
+    const rows = (await fetcher(url)) as Record<string, unknown>[];
+    return rows.map(fromRustDeal);
+  });
 }
 export async function createDeal(data: Record<string, unknown>) {
-  return mutate("/api/deals", { method: "POST", body: JSON.stringify(data) }, "Failed to create deal");
+  return mutate(
+    "/api/deals",
+    { method: "POST", body: JSON.stringify(toRustDealPayload(data)) },
+    "Failed to create deal",
+  );
 }
 export async function updateDeal(id: string, data: Record<string, unknown>) {
-  return mutate(`/api/deals/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update deal");
+  return mutate(
+    `/api/deals/${id}`,
+    { method: "PUT", body: JSON.stringify(toRustDealPayload(data)) },
+    "Failed to update deal",
+  );
 }
 export async function deleteDeal(id: string) {
   return mutate(`/api/deals/${id}`, { method: "DELETE" }, "Failed to delete deal");
@@ -125,13 +401,24 @@ export async function deleteDeal(id: string) {
 
 // ---- Customers ----
 export function useCustomers() {
-  return useSWR("/api/customers", fetcher);
+  return useSWR("/api/customers", async (url: string) => {
+    const rows = (await fetcher(url)) as Record<string, unknown>[];
+    return rows.map(fromRustCustomer);
+  });
 }
 export async function createCustomer(data: Record<string, unknown>) {
-  return mutate("/api/customers", { method: "POST", body: JSON.stringify(data) }, "Failed to create customer");
+  return mutate(
+    "/api/customers",
+    { method: "POST", body: JSON.stringify(toRustCustomerPayload(data)) },
+    "Failed to create customer",
+  );
 }
 export async function updateCustomer(id: string, data: Record<string, unknown>) {
-  return mutate(`/api/customers/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update customer");
+  return mutate(
+    `/api/customers/${id}`,
+    { method: "PUT", body: JSON.stringify(toRustCustomerPayload(data)) },
+    "Failed to update customer",
+  );
 }
 export async function deleteCustomer(id: string) {
   return mutate(`/api/customers/${id}`, { method: "DELETE" }, "Failed to delete customer");
@@ -161,7 +448,18 @@ export async function deactivateDevice(key: string, deviceId: string) {
 
 // ---- License Signing ----
 export function useKeypair() {
-  return useSWR("/api/licenses/keypair", fetcher);
+  return useSWR("/api/licenses/keypair", async (url: string) => {
+    const data = (await fetcher(url)) as Record<string, unknown>;
+    const hasKeypair =
+      (data.hasKeypair as boolean | undefined) ??
+      (data.exists as boolean | undefined) ??
+      false;
+    return {
+      ...data,
+      hasKeypair,
+      publicKey: (data.publicKey as string | null | undefined) ?? "",
+    };
+  });
 }
 export async function generateKeypair(confirm?: boolean) {
   return mutate("/api/licenses/keypair", { method: "POST", body: JSON.stringify({ confirm }) }, "Failed to generate keypair");
@@ -196,7 +494,12 @@ export async function revokeApiKey(id: string) {
 
 // ---- Pricing Plans ----
 export function usePlans() {
-  return useSWR("/api/billing/plans", fetcher);
+  return useSWR("/api/billing/plans", async (url: string) => {
+    const rows = await fetcher(url);
+    return Array.isArray(rows)
+      ? rows.map((row) => fromRustPlan(row as Record<string, unknown>))
+      : [];
+  });
 }
 export async function createPlan(data: Record<string, unknown>) {
   return mutate("/api/billing/plans", { method: "POST", body: JSON.stringify(data) }, "Failed to create plan");
@@ -210,7 +513,12 @@ export async function deletePlan(id: string) {
 
 // ---- Subscriptions ----
 export function useSubscriptions() {
-  return useSWR("/api/billing/subscriptions", fetcher);
+  return useSWR("/api/billing/subscriptions", async (url: string) => {
+    const rows = await fetcher(url);
+    return Array.isArray(rows)
+      ? rows.map((row) => fromRustSubscription(row as Record<string, unknown>))
+      : [];
+  });
 }
 export async function createSubscription(data: Record<string, unknown>) {
   return mutate("/api/billing/subscriptions", { method: "POST", body: JSON.stringify(data) }, "Failed to create subscription");
@@ -224,7 +532,12 @@ export async function deleteSubscription(id: string) {
 
 // ---- Invoices ----
 export function useInvoices() {
-  return useSWR("/api/billing/invoices", fetcher);
+  return useSWR("/api/billing/invoices", async (url: string) => {
+    const rows = await fetcher(url);
+    return Array.isArray(rows)
+      ? rows.map((row) => fromRustInvoice(row as Record<string, unknown>))
+      : [];
+  });
 }
 export async function createInvoice(data: Record<string, unknown>) {
   return mutate("/api/billing/invoices", { method: "POST", body: JSON.stringify(data) }, "Failed to create invoice");
@@ -404,6 +717,13 @@ export async function deletePaymentMethod(id: string) {
 }
 export async function setDefaultPaymentMethod(id: string) {
   return mutate(`/api/billing/payment-methods/${id}/default`, { method: "POST" }, "Failed to set default payment method");
+}
+export async function createPaymentMethodSetup(data: Record<string, unknown>) {
+  return mutate(
+    "/api/billing/payment-methods/setup",
+    { method: "POST", body: JSON.stringify(data) },
+    "Failed to create payment method setup",
+  );
 }
 
 // ---- Search ----

@@ -63,6 +63,10 @@ export async function PUT(req: NextRequest) {
         storeId: { key: PROVIDER_KEYS.LEMONSQUEEZY_STORE_ID, sensitive: false },
         webhookSecret: { key: PROVIDER_KEYS.LEMONSQUEEZY_WEBHOOK_SECRET, sensitive: true },
       },
+      tax: {
+        externalProvider: { key: PROVIDER_KEYS.EXTERNAL_TAX_PROVIDER, sensitive: false },
+        taxjarApiKey: { key: PROVIDER_KEYS.TAXJAR_API_KEY, sensitive: true },
+      },
     };
 
     const providerMap = keyMap[provider];

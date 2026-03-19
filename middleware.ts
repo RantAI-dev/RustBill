@@ -11,9 +11,9 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com",
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self'",
+    "connect-src 'self' https://vitals.vercel-insights.com https://va.vercel-scripts.com",
     "img-src 'self' data:",
     "font-src 'self' https://fonts.gstatic.com",
   ].join("; "),
@@ -34,55 +34,14 @@ export function middleware(req: NextRequest) {
     return withSecurityHeaders(NextResponse.next());
   }
 
-  // ---- 2. Production mode: Rust backend handles all API logic ----
-  if (RUST_BACKEND) {
-    // Let /api/* pass through so next.config.mjs rewrites proxy to Rust backend
-    if (pathname.startsWith("/api/")) {
-      return withSecurityHeaders(NextResponse.next());
+  // ---- 2. Rust API mode only ----
+  if (pathname.startsWith("/api/")) {
+    if (!RUST_BACKEND) {
+      return NextResponse.json(
+        { error: "RUST_BACKEND_URL is required for API routes" },
+        { status: 503 },
+      );
     }
-
-    // Login page — redirect to / if already has session cookie
-    if (pathname === "/login") {
-      if (req.cookies.has(SESSION_COOKIE)) {
-        return withSecurityHeaders(NextResponse.redirect(new URL("/", req.url)));
-      }
-      return withSecurityHeaders(NextResponse.next());
-    }
-
-    // All other page routes — require session cookie
-    if (!req.cookies.has(SESSION_COOKIE)) {
-      const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    return withSecurityHeaders(NextResponse.next());
-  }
-
-  // ---- 3. Dev mode (no RUST_BACKEND_URL): existing auth flow ----
-
-  // Public API (v1) — CORS only, no auth
-  if (pathname.startsWith("/api/v1/")) {
-    if (req.method === "OPTIONS") {
-      return new NextResponse(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-          "Access-Control-Max-Age": "86400",
-        },
-      });
-    }
-    const response = NextResponse.next();
-    response.headers.set("Access-Control-Allow-Origin", "*");
-    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    return withSecurityHeaders(response);
-  }
-
-  // Auth routes — always public
-  if (pathname.startsWith("/api/auth/")) {
     return withSecurityHeaders(NextResponse.next());
   }
 

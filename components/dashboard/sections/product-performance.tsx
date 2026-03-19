@@ -167,7 +167,7 @@ export function ProductPerformanceSection() {
   if (error) return <p className="text-destructive">Failed to load products.</p>;
   if (!products) return null;
 
-  const typedProducts = products as Product[];
+  const typedProducts = products as unknown as Product[];
   const chartData = typedProducts.map((p) => ({
     name: p.name.replace(" Plan", "").replace("AI Chat ", ""),
     revenue: Math.round(p.revenue / 1000),
