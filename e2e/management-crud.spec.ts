@@ -91,14 +91,16 @@ test("@core management CRUD path stays healthy", async ({ page }) => {
   await fillLabeledInput(page, "Pre-renewal Invoice Lead (days)", "3");
   await page.getByRole("button", { name: /^create$/i }).click();
   await waitForToast(page);
-  await expect(page.getByRole("row").filter({ hasText: "3d" }).first()).toBeVisible();
+  const subRow = page.getByRole("row").filter({ hasText: customerNameUpdated }).first();
+  await expect(subRow).toBeVisible();
+  await expect(subRow).toContainText("3d");
 
-  await openRowMenuByText(page, "3d");
+  await openRowMenuByText(page, customerNameUpdated);
   await page.getByRole("menuitem", { name: /edit/i }).click();
   await fillLabeledInput(page, "Pre-renewal Invoice Lead (days)", "5");
   await page.getByRole("button", { name: /^save$/i }).click();
   await waitForToast(page);
-  await expect(page.getByRole("row").filter({ hasText: "5d" }).first()).toBeVisible();
+  await expect(subRow).toContainText("5d");
 
   // Invoices: table load sanity (manual create/edit covered in dedicated billing spec)
   await gotoSection(page, "Invoices");
@@ -108,7 +110,7 @@ test("@core management CRUD path stays healthy", async ({ page }) => {
   await page.keyboard.press("Escape");
 
   await gotoSection(page, "Subscriptions");
-  await openRowMenuByText(page, "5d");
+  await openRowMenuByText(page, customerNameUpdated);
   await page.getByRole("menuitem", { name: /delete/i }).click();
   await confirmDeleteDialog(page);
   await waitForToast(page);

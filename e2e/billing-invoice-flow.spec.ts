@@ -57,6 +57,7 @@ test("@core invoice create update and payment flow works", async ({ page }) => {
   await page.getByTestId("invoice-form-status").selectOption("issued");
   await page.getByTestId("invoice-form-submit").click();
   await waitForToast(page);
+  await expect(page.getByRole("dialog", { name: /edit invoice/i })).toHaveCount(0);
 
   await row.locator("[data-testid^='invoice-row-menu-']").click();
   await page.getByRole("menuitem", { name: /record payment/i }).click();
