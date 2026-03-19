@@ -108,7 +108,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://rantai_billing:rantai_billing@localhost:5444/rantai_billing_test
       RUST_BACKEND_URL: http://127.0.0.1:8787
-      E2E_ADMIN_EMAIL: evan@rantai.com
+      E2E_ADMIN_EMAIL: admin@rustbill.local
       E2E_ADMIN_PASSWORD: admin123
     steps:
       - uses: actions/checkout@v4
@@ -121,12 +121,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Prepare database schema
-        run: bun run db:push
-
-      - name: Seed auth user
-        run: bun run db:seed
 
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium

@@ -3,8 +3,13 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 async function globalSetup(config: FullConfig) {
-  const email = process.env.E2E_ADMIN_EMAIL ?? "evan@rantai.com";
+  const primaryEmail = process.env.E2E_ADMIN_EMAIL ?? "admin@rustbill.local";
   const password = process.env.E2E_ADMIN_PASSWORD ?? "admin123";
+  const credentialCandidates = [
+    { email: primaryEmail, password },
+    { email: "admin@rustbill.local", password: "admin123" },
+    { email: "evan@rantai.com", password: "admin123" },
+  ];
   const baseURL = config.projects[0]?.use?.baseURL ?? "http://127.0.0.1:3000";
   const authFile = path.resolve("playwright/.auth/admin.json");
 
@@ -15,19 +20,25 @@ async function globalSetup(config: FullConfig) {
 
   let loggedIn = false;
   let lastError = "unknown";
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: /sign in/i }).click();
+  for (const candidate of credentialCandidates) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await page.goto("/login");
+      await page.getByLabel("Email").fill(candidate.email);
+      await page.getByLabel("Password").fill(candidate.password);
+      await page.getByRole("button", { name: /sign in/i }).click();
 
-    try {
-      await expect(page).toHaveURL(/\/$/, { timeout: 10_000 });
-      loggedIn = true;
+      try {
+        await expect(page).toHaveURL(/\/$/, { timeout: 10_000 });
+        loggedIn = true;
+        break;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        await page.waitForTimeout(1_200 * attempt);
+      }
+    }
+
+    if (loggedIn) {
       break;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      await page.waitForTimeout(1_500 * attempt);
     }
   }
 
