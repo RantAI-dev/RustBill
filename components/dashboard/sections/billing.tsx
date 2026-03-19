@@ -213,7 +213,7 @@ export function BillingSection() {
               {overdueInvoices.length} overdue invoice{overdueInvoices.length > 1 ? "s" : ""}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Total outstanding: {formatCurrency(overdueInvoices.reduce((s: number, i: { total: number }) => s + i.total, 0))}
+              Total outstanding: {formatCurrency(overdueInvoices.reduce((s: number, i: Record<string, unknown>) => s + Number((i.total as number) ?? 0), 0))}
             </p>
           </div>
         </div>
@@ -237,17 +237,17 @@ export function BillingSection() {
                 </tr>
               </thead>
               <tbody>
-                {recentInvoices.map((inv: { id: string; invoiceNumber: string; customerName: string | null; status: string; total: number; dueAt: string | null }) => (
-                  <tr key={inv.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                    <td className="px-5 py-3 font-mono text-xs text-foreground">{inv.invoiceNumber}</td>
-                    <td className="px-5 py-3 text-foreground">{inv.customerName ?? "—"}</td>
+                {recentInvoices.map((inv: Record<string, unknown>) => (
+                  <tr key={String(inv.id ?? "")} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                    <td className="px-5 py-3 font-mono text-xs text-foreground">{String(inv.invoiceNumber ?? inv.invoice_number ?? "—")}</td>
+                    <td className="px-5 py-3 text-foreground">{String(inv.customerName ?? inv.customer_name ?? "—")}</td>
                     <td className="px-5 py-3">
-                      <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", invoiceStatusColors[inv.status] ?? "bg-secondary text-muted-foreground")}>
-                        {inv.status}
+                      <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium capitalize", invoiceStatusColors[String(inv.status ?? "unknown")] ?? "bg-secondary text-muted-foreground")}>
+                        {String(inv.status ?? "unknown")}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right font-medium text-foreground">${inv.total.toLocaleString()}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : "—"}</td>
+                    <td className="px-5 py-3 text-right font-medium text-foreground">${Number((inv.total as number) ?? 0).toLocaleString()}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{(inv.dueAt as string) ? new Date(inv.dueAt as string).toLocaleDateString() : "—"}</td>
                   </tr>
                 ))}
               </tbody>

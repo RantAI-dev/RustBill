@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/RantAI-dev/RustBill/actions/workflows/ci.yml"><img src="https://github.com/RantAI-dev/RustBill/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/RantAI-dev/RustBill/actions/workflows/e2e-nightly.yml"><img src="https://github.com/RantAI-dev/RustBill/actions/workflows/e2e-nightly.yml/badge.svg" alt="Nightly E2E" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.82%2B-orange.svg" alt="Rust 1.82+" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue.svg" alt="TypeScript" /></a>
@@ -18,17 +19,24 @@
 
 ---
 
+## What's New
+
+- **Rust-first API architecture** - Next.js now proxies all `/api/*` traffic to Rust via a single catch-all API proxy; old Next API handlers are archived under `api-deprecated/next-api/`.
+- **Subscription pre-renewal invoices** - Automatic pre-generation before period end (default 7 days) with per-subscription override via `preRenewalInvoiceDays`.
+- **Provider setup flows in UI** - Payment method setup launch for Stripe/Xendit from Billing Portal, plus provider settings management in Settings.
+- **Provider-grade auto-charge settlement** - Auto-charge persists provider references and classifies transient vs permanent failures.
+- **Comprehensive E2E coverage** - Playwright smoke/core suites now validate frontend-to-backend flows and run in CI; provider sandbox tests run nightly.
+
 ## Features
 
-- **License Key Management** — Ed25519 cryptographic signing, online and offline verification, hardware-locked licenses
-- **Billing Dashboard** — Real-time analytics, revenue tracking, and KPI metric cards
-- **Pipeline Tracking** — Deal stages, probability scoring, and sales forecasting
-- **Multi-Provider Payments** — Stripe, Xendit, and LemonSqueezy integrations out of the box
-- **Customer Management** — Health scores, tier tracking, product assignments with JSONB license keys
-- **Subscription & Invoicing** — Recurring billing, dunning, credit notes, and coupon management
-- **Forecasting & Reports** — Revenue projections, trend analysis, and exportable reports
-- **Authentication** — Built-in auth with optional Keycloak SSO support
-- **API Key Management** — Secure API access with rate limiting (Governor)
+- **License Key Management** — Ed25519 signing, online/offline verification, hardware-locked licenses, keypair management
+- **Billing Engine** — Recurring lifecycle, pre-renewal invoicing, dunning, credits wallet, proration, refunds, credit notes
+- **Multi-Provider Payments** — Stripe, Xendit, and LemonSqueezy checkout/setup support
+- **Customer/Product/Deal Management** — Full CRUD with pipeline tracking and auto-license generation paths
+- **Subscription Control** — Per-subscription pre-renewal lead time (`preRenewalInvoiceDays`) configurable via API and UI
+- **Analytics & Reporting** — Dashboard metrics, forecasting, product performance, and reports views
+- **Authentication & Access** — Built-in auth, optional Keycloak SSO, admin API keys, v1 customer-scoped API keys
+- **Frontend-to-Backend E2E Testing** — Playwright smoke/core in CI plus nightly provider sandbox coverage
 
 ## Screenshots
 
@@ -80,7 +88,20 @@ cargo run -p rustbill-server
 cargo test -- --test-threads=1
 ```
 
-The frontend runs on `http://localhost:3000` and the Rust backend on `http://localhost:3001`.
+### Run Full Stack (Recommended)
+
+Run Rust backend and frontend together so the UI uses Rust APIs:
+
+```bash
+# terminal 1
+cd rustbill
+cargo run -p rustbill-server
+
+# terminal 2 (repo root)
+RUST_BACKEND_URL=http://127.0.0.1:8787 bun dev
+```
+
+The frontend runs on `http://localhost:3000` and Rust backend on `http://localhost:8787`.
 
 ## Architecture
 
@@ -95,11 +116,11 @@ The frontend runs on `http://localhost:3000` and the Rust backend on `http://loc
                      ▼
           ┌─────────────────────┐
           │   PostgreSQL 17     │
-          │   Port 5433         │
+          │   Port 5444         │
           └─────────────────────┘
 ```
 
-The Next.js frontend proxies API calls to the Rust backend via `next.config.mjs` rewrites. Both stacks share the same PostgreSQL database.
+The Next.js frontend proxies API calls through `app/api/[...path]/route.ts` to Rust (`RUST_BACKEND_URL`). Both stacks share the same PostgreSQL database.
 
 ## Tech Stack
 
@@ -113,7 +134,7 @@ The Next.js frontend proxies API calls to the Rust backend via `next.config.mjs`
 | **Crypto** | Ed25519-Dalek, Argon2, Bcrypt, HMAC-SHA256 |
 | **Email** | Resend (frontend), Lettre (backend) |
 | **Charts** | Recharts |
-| **Testing** | Vitest + Testing Library (frontend), axum-test (backend) |
+| **Testing** | Vitest + Testing Library, Playwright E2E (frontend), axum-test (backend) |
 | **CI/CD** | GitHub Actions |
 | **Runtime** | Bun, Docker (multi-stage builds) |
 
@@ -130,6 +151,8 @@ bun lint             # ESLint
 bun test             # Vitest
 bun run build        # Production build
 bun run db:studio    # Drizzle Studio GUI
+bun run test:e2e:smoke  # Playwright smoke
+bun run test:e2e:full   # Playwright core
 
 # Rust backend (from rustbill/ directory)
 cargo fmt --all      # Format
