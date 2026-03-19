@@ -385,7 +385,7 @@ export function LicensesSection() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const licenses = (allLicenses ?? []) as License[];
+  const licenses = (allLicenses ?? []) as unknown as License[];
 
   // Reset page when filters change
   useEffect(() => { setPage(1); }, [searchQuery, statusFilter]);

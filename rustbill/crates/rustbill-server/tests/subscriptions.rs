@@ -38,7 +38,7 @@ async fn list_subscriptions_empty(pool: PgPool) {
 
 #[sqlx::test(migrations = "../../migrations")]
 async fn create_subscription_auto_computes_period(pool: PgPool) {
-    let (server, token, customer_id, plan_id) = setup(pool).await;
+    let (server, token, customer_id, plan_id) = setup(pool.clone()).await;
 
     let resp = server
         .post("/api/billing/subscriptions")
@@ -57,6 +57,15 @@ async fn create_subscription_auto_computes_period(pool: PgPool) {
     // period_start and period_end should be populated
     assert!(body["current_period_start"].as_str().is_some());
     assert!(body["current_period_end"].as_str().is_some());
+
+    let event_type: Option<String> = sqlx::query_scalar(
+        "SELECT event_type FROM sales_events WHERE source_table = 'subscriptions' AND source_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(body["id"].as_str().unwrap())
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+    assert_eq!(event_type.as_deref(), Some("mrr_expanded"));
 }
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -188,6 +197,15 @@ async fn lifecycle_cancel(pool: PgPool) {
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
     assert_eq!(body["status"].as_str().unwrap(), "canceled");
+
+    let churn_event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sales_events WHERE event_type = 'mrr_churned' AND subscription_id = $1",
+    )
+    .bind(body["id"].as_str().unwrap())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(churn_event_count, 1);
 }
 
 #[sqlx::test(migrations = "../../migrations")]

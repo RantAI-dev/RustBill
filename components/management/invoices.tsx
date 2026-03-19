@@ -60,13 +60,14 @@ const statusColors: Record<string, string> = {
 };
 
 /* ---------- Invoice detail view ---------- */
-function InvoiceDetail({ invoice, onEdit, onRecordPayment, onCreditNote, onRefund, onCheckout }: {
+function InvoiceDetail({ invoice, onEdit, onRecordPayment, onCreditNote, onRefund, onCheckout, onDelete }: {
   invoice: Inv;
   onEdit: () => void;
   onRecordPayment: () => void;
   onCreditNote: () => void;
   onRefund: () => void;
   onCheckout: () => void;
+  onDelete: () => void;
 }) {
   const labelClass = "text-xs text-muted-foreground uppercase tracking-wider";
   const items = (invoice.items as Array<Record<string, unknown>>) || [];
@@ -172,35 +173,45 @@ function InvoiceDetail({ invoice, onEdit, onRecordPayment, onCreditNote, onRefun
         )}
       </div>
 
-      <DialogFooter className="mt-6">
-        <a href={getInvoicePdfUrl(invoice.id as string)} target="_blank" rel="noopener noreferrer">
-          <Button variant="outline" type="button">
-            <Download className="w-4 h-4 mr-1" /> PDF
-          </Button>
-        </a>
-        <Button variant="outline" onClick={onEdit}>
-          <Pencil className="w-4 h-4 mr-1" /> Edit
+      <DialogFooter className="mt-6 w-full sm:justify-between">
+        <Button
+          variant="outline"
+          type="button"
+          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+          onClick={onDelete}
+        >
+          <Trash2 className="w-4 h-4 mr-1" /> Delete
         </Button>
-        {(invoice.status === "paid" || invoice.status === "issued" || invoice.status === "overdue") && (
-          <Button variant="outline" onClick={onCreditNote}>
-            <FileText className="w-4 h-4 mr-1" /> Credit Note
-          </Button>
-        )}
-        {invoice.status === "paid" && payments.length > 0 && (
-          <Button variant="outline" onClick={onRefund}>
-            <RotateCcw className="w-4 h-4 mr-1" /> Refund
-          </Button>
-        )}
-        {(invoice.status === "issued" || invoice.status === "overdue") && (
-          <>
-            <Button variant="outline" onClick={onCheckout}>
-              <ExternalLink className="w-4 h-4 mr-1" /> Checkout Link
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <a href={getInvoicePdfUrl(invoice.id as string)} target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" type="button">
+              <Download className="w-4 h-4 mr-1" /> PDF
             </Button>
-            <Button onClick={onRecordPayment}>
-              <DollarSign className="w-4 h-4 mr-1" /> Record Payment
+          </a>
+          <Button variant="outline" onClick={onEdit}>
+            <Pencil className="w-4 h-4 mr-1" /> Edit
+          </Button>
+          {(invoice.status === "paid" || invoice.status === "issued" || invoice.status === "overdue") && (
+            <Button variant="outline" onClick={onCreditNote}>
+              <FileText className="w-4 h-4 mr-1" /> Credit Note
             </Button>
-          </>
-        )}
+          )}
+          {invoice.status === "paid" && payments.length > 0 && (
+            <Button variant="outline" onClick={onRefund}>
+              <RotateCcw className="w-4 h-4 mr-1" /> Refund
+            </Button>
+          )}
+          {(invoice.status === "issued" || invoice.status === "overdue") && (
+            <>
+              <Button variant="outline" onClick={onCheckout}>
+                <ExternalLink className="w-4 h-4 mr-1" /> Checkout Link
+              </Button>
+              <Button onClick={onRecordPayment}>
+                <DollarSign className="w-4 h-4 mr-1" /> Record Payment
+              </Button>
+            </>
+          )}
+        </div>
       </DialogFooter>
     </div>
   );
@@ -684,7 +695,30 @@ export function ManageInvoicesSection() {
   // For view mode, fetch full invoice with items + payments
   const [fullInvoice, setFullInvoice] = useState<Inv | null>(null);
 
-  const filtered = (invs || []).filter((i: Inv) =>
+  const customers = (customerList || []) as Inv[];
+  const subscriptions = (subList || []) as Inv[];
+  const customerNameById = new Map(
+    customers.map((c) => [c.id as string, (c.name as string) ?? "—"]),
+  );
+  const subscriptionById = new Map(
+    subscriptions.map((s) => [s.id as string, s]),
+  );
+
+  const invoices = ((invs || []) as Inv[]).map((inv) => {
+    const customerId = inv.customerId as string;
+    const subscriptionId = inv.subscriptionId as string;
+    const sub = subscriptionById.get(subscriptionId);
+    const subCustomerName = (sub?.customerName as string) ?? "";
+    return {
+      ...inv,
+      customerName:
+        (inv.customerName as string) ??
+        customerNameById.get(customerId) ??
+        (subCustomerName || "—"),
+    };
+  });
+
+  const filtered = invoices.filter((i: Inv) =>
     ((i.invoiceNumber as string) ?? "").toLowerCase().includes(search.toLowerCase()) ||
     ((i.customerName as string) ?? "").toLowerCase().includes(search.toLowerCase())
   );
@@ -694,7 +728,18 @@ export function ManageInvoicesSection() {
     try {
       const res = await fetch(`/api/billing/invoices/${inv.id}`);
       const data = await res.json();
-      setFullInvoice(normalizeInvoicePayload(data as Inv));
+      const normalized = normalizeInvoicePayload(data as Inv);
+      const customerId = normalized.customerId as string;
+      const subscriptionId = normalized.subscriptionId as string;
+      const sub = subscriptionById.get(subscriptionId);
+      setFullInvoice({
+        ...normalized,
+        customerName:
+          (normalized.customerName as string) ??
+          customerNameById.get(customerId) ??
+          (sub?.customerName as string) ??
+          "—",
+      });
       setSelected(inv);
       setDialogMode("view");
       setDialogOpen(true);
@@ -893,6 +938,10 @@ export function ManageInvoicesSection() {
             <InvoiceDetail
               invoice={fullInvoice}
               onEdit={() => setDialogMode("edit")}
+              onDelete={() => {
+                setDialogOpen(false);
+                setDeleteTarget(fullInvoice);
+              }}
               onRecordPayment={() => {
                 setDialogOpen(false);
                 setPaymentTarget(fullInvoice);
@@ -918,8 +967,8 @@ export function ManageInvoicesSection() {
             <InvoiceForm
               invoice={selected ?? undefined}
               mode={dialogMode}
-              customers={customerList || []}
-              subscriptions={subList || []}
+              customers={customers}
+              subscriptions={subscriptions}
               onSubmit={handleSubmit}
               onCancel={() => setDialogOpen(false)}
               loading={saving}

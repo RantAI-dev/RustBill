@@ -23,6 +23,8 @@ pub struct CreateDealRequest {
     pub notes: Option<String>,
     pub usage_metric_label: Option<String>,
     pub usage_metric_value: Option<i32>,
+    #[serde(default)]
+    pub auto_create_invoice: bool,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -45,4 +47,5 @@ pub struct UpdateDealRequest {
     pub notes: Option<String>,
     pub usage_metric_label: Option<String>,
     pub usage_metric_value: Option<i32>,
+    pub auto_create_invoice: Option<bool>,
 }

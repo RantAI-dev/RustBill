@@ -1,3 +1,4 @@
+use crate::analytics::sales_ledger::{emit_sales_event, NewSalesEvent, SalesClassification};
 use crate::db::models::*;
 use crate::error::{BillingError, Result};
 use chrono::NaiveDateTime;
@@ -165,6 +166,35 @@ pub async fn create_credit_note(pool: &PgPool, req: CreateCreditNoteRequest) -> 
     }
 
     tx.commit().await?;
+
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: chrono::Utc::now(),
+            event_type: "credit_note.created",
+            classification: SalesClassification::Adjustments,
+            amount_subtotal: amount,
+            amount_tax: Decimal::ZERO,
+            amount_total: amount,
+            currency: "USD",
+            customer_id: Some(&cn.customer_id),
+            subscription_id: None,
+            product_id: None,
+            invoice_id: Some(&cn.invoice_id),
+            payment_id: None,
+            source_table: "credit_notes",
+            source_id: &cn.id,
+            metadata: Some(serde_json::json!({
+                "status": cn.status,
+                "reason": cn.reason,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, credit_note_id = %cn.id, "failed to emit sales event credit_note.created");
+    }
+
     Ok(cn)
 }
 

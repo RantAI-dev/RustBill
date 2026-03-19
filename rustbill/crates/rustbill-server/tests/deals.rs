@@ -173,3 +173,148 @@ async fn get_nonexistent_deal_returns_404(pool: PgPool) {
 
     resp.assert_status(axum::http::StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn updating_deal_emits_reversal_and_replacement_events(pool: PgPool) {
+    let (server, token) = setup(pool.clone()).await;
+
+    let create_resp = server
+        .post("/api/deals")
+        .add_cookie(cookie::Cookie::new("session", token.clone()))
+        .json(&json!({
+            "company": "Ledger Co",
+            "contact": "Ops",
+            "email": "ops@ledger.test",
+            "value": "1000.00",
+            "product_name": "Ledger Product",
+            "product_type": "saas",
+            "deal_type": "sale",
+            "date": "2026-03-19"
+        }))
+        .await;
+    create_resp.assert_status(axum::http::StatusCode::CREATED);
+    let created: serde_json::Value = create_resp.json();
+    let deal_id = created["id"].as_str().unwrap();
+
+    let update_resp = server
+        .put(&format!("/api/deals/{deal_id}"))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .json(&json!({
+            "value": "1200.00",
+            "deal_type": "partner"
+        }))
+        .await;
+    update_resp.assert_status_ok();
+
+    let reversal_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sales_events WHERE event_type = 'deal.reversal' AND metadata ->> 'deal_id' = $1",
+    )
+    .bind(deal_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(reversal_count, 1);
+
+    let replacement_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sales_events WHERE event_type = 'deal.updated' AND metadata ->> 'deal_id' = $1",
+    )
+    .bind(deal_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(replacement_count, 1);
+
+    let reversal: serde_json::Value = sqlx::query_scalar(
+        r#"SELECT to_jsonb(se)
+           FROM sales_events se
+           WHERE se.event_type = 'deal.reversal'
+             AND se.metadata ->> 'deal_id' = $1
+           ORDER BY se.created_at DESC
+           LIMIT 1"#,
+    )
+    .bind(deal_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let replacement: serde_json::Value = sqlx::query_scalar(
+        r#"SELECT to_jsonb(se)
+           FROM sales_events se
+           WHERE se.event_type = 'deal.updated'
+             AND se.metadata ->> 'deal_id' = $1
+           ORDER BY se.created_at DESC
+           LIMIT 1"#,
+    )
+    .bind(deal_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert!(
+        reversal["metadata"]["superseded_by_event_id"]
+            .as_str()
+            .is_some(),
+        "expected superseded_by_event_id on reversal"
+    );
+    assert_eq!(
+        reversal["metadata"]["superseded_by_event_id"],
+        replacement["id"]
+    );
+    assert_eq!(
+        replacement["metadata"]["replaces_event_type"],
+        json!("deal.created")
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn deleting_deal_emits_reversal_metadata_link(pool: PgPool) {
+    let (server, token) = setup(pool.clone()).await;
+
+    let create_resp = server
+        .post("/api/deals")
+        .add_cookie(cookie::Cookie::new("session", token.clone()))
+        .json(&json!({
+            "company": "Delete Co",
+            "contact": "Ops",
+            "email": "ops@delete.test",
+            "value": "800.00",
+            "product_name": "Delete Product",
+            "product_type": "saas",
+            "deal_type": "sale",
+            "date": "2026-03-19"
+        }))
+        .await;
+    create_resp.assert_status(axum::http::StatusCode::CREATED);
+    let created: serde_json::Value = create_resp.json();
+    let deal_id = created["id"].as_str().unwrap();
+
+    let delete_resp = server
+        .delete(&format!("/api/deals/{deal_id}"))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .await;
+    delete_resp.assert_status_ok();
+
+    let reversal: serde_json::Value = sqlx::query_scalar(
+        r#"SELECT to_jsonb(se)
+           FROM sales_events se
+           WHERE se.event_type = 'deal.reversal'
+             AND se.metadata ->> 'deal_id' = $1
+           ORDER BY se.created_at DESC
+           LIMIT 1"#,
+    )
+    .bind(deal_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        reversal["metadata"]["reversal_of_event_type"],
+        json!("deal.created")
+    );
+    assert!(
+        reversal["metadata"]["reversal_of_event_id"]
+            .as_str()
+            .is_some(),
+        "expected reversal_of_event_id in metadata"
+    );
+}

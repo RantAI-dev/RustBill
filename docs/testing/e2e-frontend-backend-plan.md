@@ -39,6 +39,25 @@ Catch integration regressions where UI payloads or API contracts drift from Rust
 2. Nightly workflow runs `bun run test:e2e:providers` with sandbox secrets.
 3. Upload Playwright HTML report and trace artifacts for failed tests.
 
+## Backend Ledger Integrity Coverage (CI)
+
+These backend tests now run as explicit CI gates for the latest Sales 360 flows and ledger hardening:
+
+- `analytics_sales_360_backfill_is_idempotent`
+- `analytics_sales_360_reconcile_returns_drift_shape`
+- `analytics_sales_360_summary_supports_currency_breakdown`
+- `analytics_sales_events_partition_maintenance_creates_future_partition`
+- `analytics_sales_events_partition_prunes_out_of_window_partition`
+- `deleting_invoice_emits_reversal_with_metadata`
+- `updating_deal_emits_reversal_and_replacement_events`
+- `deleting_completed_refund_emits_reversal_metadata`
+- `deleting_credit_note_emits_reversal_with_metadata`
+
+Reference:
+
+- CI workflow: `.github/workflows/ci.yml`
+- Runbook: `docs/testing/sales-ledger-drift-runbook.md`
+
 ## Local Run
 
 ```bash

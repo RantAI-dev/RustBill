@@ -1,3 +1,4 @@
+use crate::analytics::sales_ledger::{emit_sales_event, NewSalesEvent, SalesClassification};
 use crate::db::models::*;
 use crate::error::{BillingError, Result};
 use rust_decimal::Decimal;
@@ -116,6 +117,36 @@ pub async fn create_refund(pool: &PgPool, req: CreateRefundRequest) -> Result<Re
     }
 
     tx.commit().await?;
+
+    if status == RefundStatus::Completed {
+        if let Err(err) = emit_sales_event(
+            pool,
+            NewSalesEvent {
+                occurred_at: chrono::Utc::now(),
+                event_type: "refund.completed",
+                classification: SalesClassification::Adjustments,
+                amount_subtotal: req.amount,
+                amount_tax: Decimal::ZERO,
+                amount_total: req.amount,
+                currency: "USD",
+                customer_id: None,
+                subscription_id: None,
+                product_id: None,
+                invoice_id: Some(&req.invoice_id),
+                payment_id: Some(&req.payment_id),
+                source_table: "refunds",
+                source_id: &refund.id,
+                metadata: Some(serde_json::json!({
+                    "reason": req.reason,
+                })),
+            },
+        )
+        .await
+        {
+            tracing::warn!(error = %err, refund_id = %refund.id, "failed to emit sales event refund.completed");
+        }
+    }
+
     Ok(refund)
 }
 

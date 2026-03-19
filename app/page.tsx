@@ -12,6 +12,7 @@ import { ProductPerformanceSection } from "@/components/dashboard/sections/produ
 import { LicensesSection } from "@/components/dashboard/sections/licenses";
 import { ForecastingSection } from "@/components/dashboard/sections/forecasting";
 import { ReportsSection } from "@/components/dashboard/sections/reports";
+import { Sales360Section } from "@/components/dashboard/sections/sales-360";
 import { SettingsSection } from "@/components/dashboard/sections/settings";
 import { ApiDocsSection } from "@/components/dashboard/sections/api-docs";
 import { ManageProductsSection } from "@/components/management/products";
@@ -30,7 +31,7 @@ import { ApiProvider } from "@/hooks/use-api";
 import { BackendBanner } from "@/components/backend-banner";
 
 export type Section =
-  | "overview" | "trials" | "deals" | "customers" | "licenses" | "products" | "forecasting" | "reports" | "settings" | "api-docs" | "billing"
+  | "overview" | "trials" | "deals" | "customers" | "licenses" | "products" | "forecasting" | "reports" | "sales-360" | "settings" | "api-docs" | "billing"
   | "manage-products" | "manage-deals" | "manage-customers" | "manage-licenses" | "manage-plans" | "manage-subscriptions" | "manage-invoices" | "manage-coupons"
   | "manage-webhooks" | "manage-tax-rules" | "billing-portal";
 
@@ -45,6 +46,7 @@ type DashboardView =
   | "licenses"
   | "forecasting"
   | "reports"
+  | "sales-360"
   | "billing";
 
 const dashboardViews: { id: DashboardView; label: string }[] = [
@@ -56,6 +58,7 @@ const dashboardViews: { id: DashboardView; label: string }[] = [
   { id: "licenses", label: "Licenses" },
   { id: "forecasting", label: "Forecasting" },
   { id: "reports", label: "Reports" },
+  { id: "sales-360", label: "Sales 360" },
   { id: "billing", label: "Billing" },
 ];
 
@@ -130,6 +133,8 @@ export default function Dashboard() {
         return <ForecastingSection />;
       case "reports":
         return <ReportsSection />;
+      case "sales-360":
+        return <Sales360Section />;
       case "settings":
         return <SettingsSection />;
       case "api-docs":

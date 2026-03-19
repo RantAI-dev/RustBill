@@ -3,6 +3,7 @@
 //! Orchestrates trial conversion, cancellation, renewal with invoice
 //! generation, usage-based billing, and coupon discount application.
 
+use crate::analytics::sales_ledger::{emit_sales_event, NewSalesEvent, SalesClassification};
 use crate::billing::tiered_pricing;
 use crate::db::models::*;
 use crate::error::Result;
@@ -70,6 +71,19 @@ pub async fn run_full_lifecycle(
 async fn convert_expired_trials(pool: &PgPool) -> Result<u64> {
     let now = Utc::now().naive_utc();
 
+    let before_rows = sqlx::query_as::<_, Subscription>(
+        r#"
+        SELECT * FROM subscriptions
+        WHERE status = 'trialing'
+          AND deleted_at IS NULL
+          AND trial_end IS NOT NULL
+          AND trial_end <= $1
+        "#,
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
+
     let r = sqlx::query(
         r#"
         UPDATE subscriptions
@@ -98,6 +112,18 @@ async fn convert_expired_trials(pool: &PgPool) -> Result<u64> {
     let count = r.rows_affected();
     if count > 0 {
         tracing::info!(count, "Converted expired trials to active");
+
+        for before in &before_rows {
+            if let Ok(after) = sqlx::query_as::<_, Subscription>(
+                "SELECT * FROM subscriptions WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&before.id)
+            .fetch_one(pool)
+            .await
+            {
+                emit_mrr_change_event(pool, before, &after, "lifecycle_trial_convert").await;
+            }
+        }
     }
     Ok(count)
 }
@@ -105,6 +131,19 @@ async fn convert_expired_trials(pool: &PgPool) -> Result<u64> {
 /// Step 2: Cancel subscriptions with cancel_at_period_end=true past period end.
 async fn cancel_at_period_end(pool: &PgPool) -> Result<u64> {
     let now = Utc::now().naive_utc();
+
+    let before_rows = sqlx::query_as::<_, Subscription>(
+        r#"
+        SELECT * FROM subscriptions
+        WHERE status = 'active'
+          AND deleted_at IS NULL
+          AND cancel_at_period_end = true
+          AND current_period_end <= $1
+        "#,
+    )
+    .bind(now)
+    .fetch_all(pool)
+    .await?;
 
     let r = sqlx::query(
         r#"
@@ -126,6 +165,18 @@ async fn cancel_at_period_end(pool: &PgPool) -> Result<u64> {
     let count = r.rows_affected();
     if count > 0 {
         tracing::info!(count, "Canceled subscriptions at period end");
+
+        for before in &before_rows {
+            if let Ok(after) = sqlx::query_as::<_, Subscription>(
+                "SELECT * FROM subscriptions WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(&before.id)
+            .fetch_one(pool)
+            .await
+            {
+                emit_mrr_change_event(pool, before, &after, "lifecycle_cancel_at_period_end").await;
+            }
+        }
     }
     Ok(count)
 }
@@ -406,6 +457,33 @@ async fn renew_single_subscription(
         total = %invoice_output.total,
         "Subscription renewed with invoice"
     );
+
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: Utc::now(),
+            event_type: "subscription.renewed",
+            classification: SalesClassification::Recurring,
+            amount_subtotal: invoice_output.total,
+            amount_tax: Decimal::ZERO,
+            amount_total: invoice_output.total,
+            currency: "USD",
+            customer_id: Some(&sub.customer_id),
+            subscription_id: Some(&sub.id),
+            product_id: None,
+            invoice_id: Some(&invoice_id),
+            payment_id: None,
+            source_table: "invoices",
+            source_id: &invoice_id,
+            metadata: Some(serde_json::json!({
+                "invoice_number": invoice_output.invoice_number,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, subscription_id = %sub.id, "failed to emit sales event subscription.renewed");
+    }
 
     Ok(())
 }
@@ -703,6 +781,33 @@ async fn ensure_renewal_invoice(
         }
     }
 
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: Utc::now(),
+            event_type: "invoice.issued",
+            classification: SalesClassification::Billings,
+            amount_subtotal: committed_invoice.subtotal,
+            amount_tax: committed_invoice.tax,
+            amount_total: committed_invoice.total,
+            currency: &committed_invoice.currency,
+            customer_id: Some(&sub.customer_id),
+            subscription_id: Some(&sub.id),
+            product_id: None,
+            invoice_id: Some(&committed_invoice.id),
+            payment_id: None,
+            source_table: "invoices",
+            source_id: &committed_invoice.id,
+            metadata: Some(serde_json::json!({
+                "pre_generated": notify_invoice_issued,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, invoice_id = %committed_invoice.id, "failed to emit sales event invoice.issued");
+    }
+
     Ok(Some(RenewalInvoiceOutput {
         invoice: committed_invoice,
         final_amount_due,
@@ -715,6 +820,117 @@ async fn ensure_renewal_invoice(
 
 fn renewal_invoice_key(sub: &Subscription, period_start: NaiveDateTime) -> String {
     format!("renewal:{}:{}", sub.id, period_start.format("%Y%m%d%H%M%S"))
+}
+
+fn contributes_to_mrr(status: &SubscriptionStatus) -> bool {
+    matches!(
+        status,
+        SubscriptionStatus::Active | SubscriptionStatus::PastDue
+    )
+}
+
+async fn subscription_mrr(pool: &PgPool, sub: &Subscription) -> Result<Decimal> {
+    let plan = sqlx::query_as::<_, PricingPlan>("SELECT * FROM pricing_plans WHERE id = $1")
+        .bind(&sub.plan_id)
+        .fetch_one(pool)
+        .await?;
+
+    let tiers: Option<Vec<PricingTier>> = plan
+        .tiers
+        .as_ref()
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
+
+    Ok(tiered_pricing::calculate_amount(
+        &plan.pricing_model,
+        plan.base_price,
+        plan.unit_price,
+        tiers.as_deref(),
+        sub.quantity,
+    ))
+}
+
+async fn emit_mrr_change_event(
+    pool: &PgPool,
+    before: &Subscription,
+    after: &Subscription,
+    trigger: &str,
+) {
+    let old_mrr = match subscription_mrr(pool, before).await {
+        Ok(value) => value,
+        Err(err) => {
+            tracing::warn!(error = %err, subscription_id = %before.id, "failed to compute previous MRR");
+            return;
+        }
+    };
+    let new_mrr = match subscription_mrr(pool, after).await {
+        Ok(value) => value,
+        Err(err) => {
+            tracing::warn!(error = %err, subscription_id = %after.id, "failed to compute current MRR");
+            return;
+        }
+    };
+
+    let old_effective = if contributes_to_mrr(&before.status) {
+        old_mrr
+    } else {
+        Decimal::ZERO
+    };
+    let new_effective = if contributes_to_mrr(&after.status) {
+        new_mrr
+    } else {
+        Decimal::ZERO
+    };
+
+    let delta = new_effective - old_effective;
+    if delta == Decimal::ZERO {
+        return;
+    }
+
+    let event_type = if delta > Decimal::ZERO {
+        "mrr_expanded"
+    } else if new_effective == Decimal::ZERO
+        && old_effective > Decimal::ZERO
+        && matches!(after.status, SubscriptionStatus::Canceled)
+    {
+        "mrr_churned"
+    } else {
+        "mrr_contracted"
+    };
+
+    let amount = delta.abs();
+    let source_id = format!("{}:v{}", after.id, after.version);
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: Utc::now(),
+            event_type,
+            classification: SalesClassification::Recurring,
+            amount_subtotal: amount,
+            amount_tax: Decimal::ZERO,
+            amount_total: amount,
+            currency: "USD",
+            customer_id: Some(&after.customer_id),
+            subscription_id: Some(&after.id),
+            product_id: None,
+            invoice_id: None,
+            payment_id: None,
+            source_table: "subscription_revisions",
+            source_id: &source_id,
+            metadata: Some(serde_json::json!({
+                "trigger": trigger,
+                "from_status": before.status,
+                "to_status": after.status,
+                "from_plan_id": before.plan_id,
+                "to_plan_id": after.plan_id,
+                "from_quantity": before.quantity,
+                "to_quantity": after.quantity,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, subscription_id = %after.id, "failed to emit recurring MRR change event");
+    }
 }
 
 fn pre_renewal_invoice_days(sub: &Subscription) -> i64 {

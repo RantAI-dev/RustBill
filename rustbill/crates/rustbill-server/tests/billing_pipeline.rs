@@ -352,6 +352,92 @@ async fn test_pre_generate_invoice_respects_subscription_specific_lead_days(pool
     assert_eq!(count_after, 1);
 }
 
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_lifecycle_trial_conversion_emits_mrr_expanded(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+
+    let customer_id = create_customer_with_billing(&pool, "US", Some("CA")).await;
+    let plan_id = create_flat_plan(&pool, "Trial Plan", "79.00").await;
+    let sub_id = create_subscription(&pool, &customer_id, &plan_id).await;
+
+    sqlx::query(
+        r#"UPDATE subscriptions
+           SET status = 'trialing',
+               trial_end = NOW() - INTERVAL '1 hour'
+           WHERE id = $1"#,
+    )
+    .bind(&sub_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let resp = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+
+    let status: String = sqlx::query_scalar("SELECT status::text FROM subscriptions WHERE id = $1")
+        .bind(&sub_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "active");
+
+    let mrr_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sales_events WHERE subscription_id = $1 AND event_type = 'mrr_expanded' AND source_table = 'subscription_revisions'",
+    )
+    .bind(&sub_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(mrr_events, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn test_lifecycle_cancel_at_period_end_emits_mrr_churned(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+
+    let customer_id = create_customer_with_billing(&pool, "US", Some("CA")).await;
+    let plan_id = create_flat_plan(&pool, "Cancel Plan", "59.00").await;
+    let sub_id = create_subscription(&pool, &customer_id, &plan_id).await;
+
+    sqlx::query(
+        r#"UPDATE subscriptions
+           SET cancel_at_period_end = true,
+               current_period_end = NOW() - INTERVAL '1 hour'
+           WHERE id = $1"#,
+    )
+    .bind(&sub_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let resp = server
+        .post("/api/billing/cron/renew-subscriptions")
+        .add_cookie(cookie::Cookie::new("session", &token))
+        .await;
+    resp.assert_status_ok();
+
+    let status: String = sqlx::query_scalar("SELECT status::text FROM subscriptions WHERE id = $1")
+        .bind(&sub_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "canceled");
+
+    let churn_events: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sales_events WHERE subscription_id = $1 AND event_type = 'mrr_churned' AND source_table = 'subscription_revisions'",
+    )
+    .bind(&sub_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(churn_events, 1);
+}
+
 /// Parse a JSON value that could be a string or number into a Decimal.
 fn parse_decimal_value(val: &serde_json::Value) -> rust_decimal::Decimal {
     use std::str::FromStr;

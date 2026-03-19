@@ -8,8 +8,14 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use rust_decimal::Decimal;
+use rustbill_core::analytics::sales_ledger::{
+    emit_sales_event, NewSalesEvent, SalesClassification,
+};
+use rustbill_core::db::models::{Invoice, InvoiceStatus};
 use rustbill_core::error::BillingError;
 use sqlx::PgPool;
+use std::str::FromStr;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -163,6 +169,38 @@ async fn create(
         rustbill_core::error::BillingError::from(err)
     })?;
 
+    let subtotal_dec = Decimal::from_str(&subtotal.to_string()).unwrap_or(Decimal::ZERO);
+    let tax_dec = Decimal::from_str(&tax.to_string()).unwrap_or(Decimal::ZERO);
+    let total_dec = Decimal::from_str(&total.to_string()).unwrap_or(Decimal::ZERO);
+
+    if let Err(err) = emit_sales_event(
+        &state.db,
+        NewSalesEvent {
+            occurred_at: chrono::Utc::now(),
+            event_type: "invoice.created",
+            classification: SalesClassification::Billings,
+            amount_subtotal: subtotal_dec,
+            amount_tax: tax_dec,
+            amount_total: total_dec,
+            currency,
+            customer_id: Some(customer_id),
+            subscription_id: body["subscriptionId"].as_str(),
+            product_id: None,
+            invoice_id: Some(&invoice_id),
+            payment_id: None,
+            source_table: "invoices",
+            source_id: &invoice_id,
+            metadata: Some(serde_json::json!({
+                "status": status,
+                "origin": "manual",
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, invoice_id = %invoice_id, "failed to emit sales event invoice.created");
+    }
+
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -198,6 +236,17 @@ async fn update(
     Path(id): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    let before =
+        sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?
+            .ok_or_else(|| rustbill_core::error::BillingError::NotFound {
+                entity: "invoice".into(),
+                id: id.clone(),
+            })?;
+
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"UPDATE invoices SET
              status = COALESCE($2::invoice_status, status),
@@ -220,6 +269,17 @@ async fn update(
         id: id.clone(),
     })?;
 
+    let after =
+        sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?;
+
+    if before.status != after.status && matches!(after.status, InvoiceStatus::Void) {
+        emit_invoice_void_reversal(&state.db, &after, "invoice_update").await;
+    }
+
     Ok(Json(row))
 }
 
@@ -228,6 +288,17 @@ async fn remove(
     _user: AdminUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    let invoice =
+        sqlx::query_as::<_, Invoice>("SELECT * FROM invoices WHERE id = $1 AND deleted_at IS NULL")
+            .bind(&id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(rustbill_core::error::BillingError::from)?
+            .ok_or_else(|| rustbill_core::error::BillingError::NotFound {
+                entity: "invoice".into(),
+                id: id.clone(),
+            })?;
+
     let result =
         sqlx::query("UPDATE invoices SET status = 'void', deleted_at = now(), version = version + 1, updated_at = now() WHERE id = $1 AND deleted_at IS NULL")
             .bind(&id)
@@ -243,7 +314,89 @@ async fn remove(
         .into());
     }
 
+    emit_invoice_void_reversal(&state.db, &invoice, "invoice_delete").await;
+
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+async fn emit_invoice_void_reversal(pool: &PgPool, invoice: &Invoice, trigger: &str) {
+    let reversal_target: Option<(String, String, Decimal, Decimal, Decimal)> = sqlx::query_as(
+        r#"
+        SELECT id, event_type, amount_subtotal, amount_tax, amount_total
+        FROM sales_events
+        WHERE source_table = 'invoices'
+          AND source_id = $1
+          AND classification = 'billings'
+          AND amount_total > 0
+          AND event_type IN ('invoice.created', 'invoice.created_from_deal', 'invoice.issued')
+        ORDER BY occurred_at DESC, created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(&invoice.id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some((event_id, event_type, subtotal, tax, total)) = reversal_target {
+        if let Err(err) = emit_sales_event(
+            pool,
+            NewSalesEvent {
+                occurred_at: chrono::Utc::now(),
+                event_type: "invoice.reversal",
+                classification: SalesClassification::Billings,
+                amount_subtotal: -subtotal,
+                amount_tax: -tax,
+                amount_total: -total,
+                currency: &invoice.currency,
+                customer_id: Some(&invoice.customer_id),
+                subscription_id: invoice.subscription_id.as_deref(),
+                product_id: None,
+                invoice_id: Some(&invoice.id),
+                payment_id: None,
+                source_table: "invoices",
+                source_id: &invoice.id,
+                metadata: Some(serde_json::json!({
+                    "trigger": trigger,
+                    "reason": "invoice_voided",
+                    "reversal_of_event_id": event_id,
+                    "reversal_of_event_type": event_type,
+                })),
+            },
+        )
+        .await
+        {
+            tracing::warn!(error = %err, invoice_id = %invoice.id, "failed to emit invoice.reversal");
+        }
+    }
+
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: chrono::Utc::now(),
+            event_type: "invoice.voided",
+            classification: SalesClassification::Billings,
+            amount_subtotal: Decimal::ZERO,
+            amount_tax: Decimal::ZERO,
+            amount_total: Decimal::ZERO,
+            currency: &invoice.currency,
+            customer_id: Some(&invoice.customer_id),
+            subscription_id: invoice.subscription_id.as_deref(),
+            product_id: None,
+            invoice_id: Some(&invoice.id),
+            payment_id: None,
+            source_table: "invoices",
+            source_id: &invoice.id,
+            metadata: Some(serde_json::json!({
+                "trigger": trigger,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, invoice_id = %invoice.id, "failed to emit invoice.voided");
+    }
 }
 
 async fn list_items(

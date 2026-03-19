@@ -175,7 +175,20 @@ export function ManagePlansSection() {
   const [deleteTarget, setDeleteTarget] = useState<Plan | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const filtered = (plans || []).filter((p: Plan) =>
+  const products = (productList || []) as Plan[];
+  const productNameById = new Map(
+    products.map((p) => [p.id as string, (p.name as string) ?? "—"]),
+  );
+
+  const normalizedPlans = ((plans || []) as Plan[]).map((p) => ({
+    ...p,
+    productName:
+      (p.productName as string) ??
+      productNameById.get((p.productId as string) ?? "") ??
+      "—",
+  }));
+
+  const filtered = normalizedPlans.filter((p: Plan) =>
     (p.name as string).toLowerCase().includes(search.toLowerCase())
   );
 
@@ -306,13 +319,25 @@ export function ManagePlansSection() {
           <PlanForm
             plan={selected ?? undefined}
             mode={dialogMode}
-            products={productList || []}
+            products={products}
             onSubmit={handleSubmit}
             onCancel={() => setDialogOpen(false)}
             loading={saving}
           />
           {dialogMode === "view" && (
-            <DialogFooter>
+            <DialogFooter className="w-full sm:justify-between">
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (selected) {
+                    setDialogOpen(false);
+                    setDeleteTarget(selected);
+                  }
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Delete
+              </Button>
               <Button variant="outline" onClick={() => setDialogMode("edit")}>
                 <Pencil className="w-4 h-4 mr-1" /> Edit
               </Button>

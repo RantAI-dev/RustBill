@@ -78,6 +78,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://rantai_billing:rantai_billing@localhost:5444/rantai_billing_test
 
+      - name: Sales ledger reconciliation gates
+        working-directory: rustbill
+        run: cargo test --test analytics analytics_sales_360_backfill_is_idempotent -- --test-threads=1 && cargo test --test analytics analytics_sales_360_reconcile_returns_drift_shape -- --test-threads=1 && cargo test --test analytics analytics_sales_360_summary_supports_currency_breakdown -- --test-threads=1 && cargo test --test analytics analytics_sales_events_partition_maintenance_creates_future_partition -- --test-threads=1 && cargo test --test analytics analytics_sales_events_partition_prunes_out_of_window_partition -- --test-threads=1 && cargo test --test invoices deleting_invoice_emits_reversal_with_metadata -- --test-threads=1 && cargo test --test deals updating_deal_emits_reversal_and_replacement_events -- --test-threads=1 && cargo test --test refunds deleting_completed_refund_emits_reversal_metadata -- --test-threads=1 && cargo test --test credit_notes deleting_credit_note_emits_reversal_with_metadata -- --test-threads=1
+        env:
+          DATABASE_URL: postgresql://rantai_billing:rantai_billing@localhost:5444/rantai_billing_test
+
   e2e-core:
     name: Frontend-to-Backend E2E Core
     runs-on: ubuntu-latest

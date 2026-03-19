@@ -243,7 +243,7 @@ function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
         <DialogFooter className="mt-6">
           <Button variant="outline" onClick={onCancel}>Cancel</Button>
           <Button
-            disabled={loading}
+            disabled={loading || (!isView && isCreate && (!form.customerId || !form.planId))}
             onClick={() => onSubmit({
               ...form,
               preRenewalInvoiceDays: Math.max(0, Math.min(90, Number(form.preRenewalInvoiceDays) || 0)),
@@ -268,7 +268,30 @@ export function ManageSubscriptionsSection() {
   const [deleteTarget, setDeleteTarget] = useState<Sub | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const filtered = (subs || []).filter((s: Sub) =>
+  const customers = (customerList || []) as Sub[];
+  const plans = (planList || []) as Sub[];
+
+  const customerNameById = new Map(
+    customers.map((c) => [c.id as string, (c.name as string) ?? "—"]),
+  );
+  const planById = new Map(
+    plans.map((p) => [p.id as string, p]),
+  );
+
+  const subscriptions = ((subs || []) as Sub[]).map((s) => {
+    const customerId = s.customerId as string;
+    const planId = s.planId as string;
+    const plan = planById.get(planId);
+    return {
+      ...s,
+      customerName: (s.customerName as string) ?? customerNameById.get(customerId) ?? "—",
+      planName: (s.planName as string) ?? (plan?.name as string) ?? "—",
+      planBasePrice: (s.planBasePrice as number) ?? (plan?.basePrice as number) ?? 0,
+      planBillingCycle: (s.planBillingCycle as string) ?? (plan?.billingCycle as string) ?? "monthly",
+    };
+  });
+
+  const filtered = subscriptions.filter((s: Sub) =>
     ((s.customerName as string) ?? "").toLowerCase().includes(search.toLowerCase()) ||
     ((s.planName as string) ?? "").toLowerCase().includes(search.toLowerCase())
   );
@@ -404,14 +427,26 @@ export function ManageSubscriptionsSection() {
           <SubForm
             sub={selected ?? undefined}
             mode={dialogMode}
-            customers={customerList || []}
-            plans={planList || []}
+            customers={customers}
+            plans={plans}
             onSubmit={handleSubmit}
             onCancel={() => setDialogOpen(false)}
             loading={saving}
           />
           {dialogMode === "view" && (
-            <DialogFooter>
+            <DialogFooter className="w-full sm:justify-between">
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (selected) {
+                    setDialogOpen(false);
+                    setDeleteTarget(selected);
+                  }
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Delete
+              </Button>
               <Button variant="outline" onClick={() => setDialogMode("edit")}>
                 <Pencil className="w-4 h-4 mr-1" /> Edit
               </Button>

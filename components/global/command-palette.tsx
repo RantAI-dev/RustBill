@@ -45,6 +45,7 @@ const sectionNav: { id: Section; label: string; icon: React.ElementType; group: 
   { id: "licenses", label: "Licenses", icon: KeyRound, group: "Dashboard" },
   { id: "forecasting", label: "Forecasting", icon: TrendingUp, group: "Dashboard" },
   { id: "reports", label: "Reports", icon: BarChart3, group: "Dashboard" },
+  { id: "sales-360", label: "Sales 360", icon: BarChart3, group: "Dashboard" },
   { id: "billing", label: "Billing", icon: CreditCard, group: "Dashboard" },
   { id: "manage-products", label: "Manage Products", icon: Package, group: "Management" },
   { id: "manage-deals", label: "Manage Deals", icon: Handshake, group: "Management" },

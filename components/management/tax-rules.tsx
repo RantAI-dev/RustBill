@@ -297,7 +297,19 @@ export function TaxRulesManagement() {
             loading={saving}
           />
           {dialogMode === "view" && (
-            <DialogFooter>
+            <DialogFooter className="w-full sm:justify-between">
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (selected) {
+                    setDialogOpen(false);
+                    setDeleteTarget(selected);
+                  }
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Delete
+              </Button>
               <Button variant="outline" onClick={() => setDialogMode("edit")}>
                 <Pencil className="w-4 h-4 mr-1" /> Edit
               </Button>

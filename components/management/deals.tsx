@@ -181,6 +181,7 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
   const [date, setDate] = useState((deal?.date as string) ?? new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState((deal?.notes as string) ?? "");
   const [licenseExpiresAt, setLicenseExpiresAt] = useState("");
+  const [autoCreateInvoice, setAutoCreateInvoice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [productOpen, setProductOpen] = useState(false);
@@ -211,6 +212,8 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
       dealType,
       value,
       date,
+      autoCreateInvoice,
+      auto_create_invoice: autoCreateInvoice,
       notes: notes || null,
       company: (selectedCustomer?.name as string) ?? "Unknown Company",
       contact: (selectedCustomer?.contact as string) ?? "Unknown Contact",
@@ -370,6 +373,19 @@ function DealForm({ deal, onClose, onSuccess }: { deal: Deal | null; onClose: ()
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={cn(inputClass, "h-auto py-2 resize-none")} placeholder="e.g., 30-day evaluation, partner agreement details..." />
         </div>
       )}
+
+      {!isEditing && (
+        <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50 border border-border/50 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoCreateInvoice}
+            onChange={(e) => setAutoCreateInvoice(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          <span className="text-sm text-foreground">Auto-create draft invoice from this deal</span>
+        </label>
+      )}
+
       <DialogFooter className="pt-4 border-t border-border">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={submitting}>{submitting ? "Saving..." : isEditing ? "Save Changes" : "Create Deal"}</Button>

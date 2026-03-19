@@ -131,17 +131,14 @@ function fromRustCustomer(customer: Record<string, unknown>): Record<string, unk
 }
 
 function toRustDealPayload(data: Record<string, unknown>): Record<string, unknown> {
-  const numericValue = (() => {
-    const n = Number(data.value);
-    return Number.isFinite(n) ? n : 0;
-  })();
+  const decimalValue = toDecimalString(data.value) ?? "0";
   return {
     customerId: data.customerId ?? data.customer_id ?? null,
     customer_id: data.customerId ?? data.customer_id ?? null,
     company: data.company ?? null,
     contact: data.contact ?? null,
     email: data.email ?? null,
-    value: numericValue,
+    value: decimalValue,
     productId: data.productId ?? data.product_id ?? null,
     product_id: data.productId ?? data.product_id ?? null,
     productName: data.productName ?? data.product_name ?? null,
@@ -158,6 +155,8 @@ function toRustDealPayload(data: Record<string, unknown>): Record<string, unknow
     usage_metric_label: data.usageMetricLabel ?? data.usage_metric_label ?? null,
     usageMetricValue: toInt(data.usageMetricValue ?? data.usage_metric_value),
     usage_metric_value: toInt(data.usageMetricValue ?? data.usage_metric_value),
+    autoCreateInvoice: Boolean(data.autoCreateInvoice ?? data.auto_create_invoice ?? false),
+    auto_create_invoice: Boolean(data.autoCreateInvoice ?? data.auto_create_invoice ?? false),
   };
 }
 
@@ -193,7 +192,11 @@ function fromRustSubscription(sub: Record<string, unknown>): Record<string, unkn
   return {
     ...sub,
     customerId: (sub.customer_id as string) ?? sub.customerId,
+    customerName: (sub.customer_name as string) ?? sub.customerName,
     planId: (sub.plan_id as string) ?? sub.planId,
+    planName: (sub.plan_name as string) ?? sub.planName,
+    planBasePrice: (sub.plan_base_price as number | string) ?? sub.planBasePrice,
+    planBillingCycle: (sub.plan_billing_cycle as string) ?? sub.planBillingCycle,
     currentPeriodStart: (sub.current_period_start as string) ?? sub.currentPeriodStart,
     currentPeriodEnd: (sub.current_period_end as string) ?? sub.currentPeriodEnd,
     cancelAtPeriodEnd: (sub.cancel_at_period_end as boolean) ?? sub.cancelAtPeriodEnd,
@@ -210,6 +213,7 @@ function fromRustPlan(plan: Record<string, unknown>): Record<string, unknown> {
   return {
     ...plan,
     productId: (plan.product_id as string) ?? plan.productId,
+    productName: (plan.product_name as string) ?? plan.productName,
     pricingModel: (plan.pricing_model as string) ?? plan.pricingModel,
     billingCycle: (plan.billing_cycle as string) ?? plan.billingCycle,
     basePrice: Number((plan.base_price as number | string) ?? plan.basePrice ?? 0),
@@ -271,6 +275,43 @@ function fromRustInvoice(inv: Record<string, unknown>): Record<string, unknown> 
     updatedAt: (inv.updated_at as string) ?? inv.updatedAt,
     items,
     payments,
+  };
+}
+
+function fromRustCoupon(coupon: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...coupon,
+    discountType: (coupon.discount_type as string) ?? coupon.discountType,
+    discountValue: Number((coupon.discount_value as number | string) ?? coupon.discountValue ?? 0),
+    maxRedemptions: (coupon.max_redemptions as number | null) ?? coupon.maxRedemptions,
+    timesRedeemed: Number((coupon.times_redeemed as number | string) ?? coupon.timesRedeemed ?? 0),
+    validFrom: (coupon.valid_from as string) ?? coupon.validFrom,
+    validUntil: (coupon.valid_until as string) ?? coupon.validUntil,
+    appliesTo: (coupon.applies_to as unknown) ?? coupon.appliesTo,
+    createdAt: (coupon.created_at as string) ?? coupon.createdAt,
+    updatedAt: (coupon.updated_at as string) ?? coupon.updatedAt,
+    deletedAt: (coupon.deleted_at as string | null) ?? coupon.deletedAt,
+  };
+}
+
+function fromRustLicense(license: Record<string, unknown>): Record<string, unknown> {
+  const signature = (license.signature as string | null | undefined) ?? null;
+  const signedPayload = (license.signed_payload as string | null | undefined) ?? null;
+  return {
+    ...license,
+    customerId: (license.customer_id as string) ?? license.customerId,
+    customerName: (license.customer_name as string) ?? license.customerName,
+    customer: (license.customer_name as string) ?? license.customer ?? "—",
+    productId: (license.product_id as string) ?? license.productId,
+    productName: (license.product_name as string) ?? license.productName,
+    product: (license.product_name as string) ?? license.product ?? "—",
+    licenseType: (license.license_type as string) ?? license.licenseType,
+    maxActivations: (license.max_activations as number) ?? license.maxActivations,
+    createdAt: (license.created_at as string) ?? license.createdAt,
+    expiresAt: (license.expires_at as string) ?? license.expiresAt,
+    signedPayload,
+    signature,
+    hasCertificate: Boolean(signature && signedPayload),
   };
 }
 
@@ -426,7 +467,12 @@ export async function deleteCustomer(id: string) {
 
 // ---- Licenses ----
 export function useLicenses() {
-  return useSWR("/api/licenses", fetcher);
+  return useSWR("/api/licenses", async (url: string) => {
+    const rows = await fetcher(url);
+    return Array.isArray(rows)
+      ? rows.map((row) => fromRustLicense(row as Record<string, unknown>))
+      : [];
+  });
 }
 export async function createLicense(data: Record<string, unknown>) {
   return mutate("/api/licenses", { method: "POST", body: JSON.stringify(data) }, "Failed to create license");
@@ -583,7 +629,12 @@ export async function deleteCreditNote(id: string) {
 
 // ---- Coupons ----
 export function useCoupons() {
-  return useSWR("/api/billing/coupons", fetcher);
+  return useSWR("/api/billing/coupons", async (url: string) => {
+    const rows = await fetcher(url);
+    return Array.isArray(rows)
+      ? rows.map((row) => fromRustCoupon(row as Record<string, unknown>))
+      : [];
+  });
 }
 export async function createCoupon(data: Record<string, unknown>) {
   return mutate("/api/billing/coupons", { method: "POST", body: JSON.stringify(data) }, "Failed to create coupon");
@@ -678,6 +729,49 @@ export function useForecastAnalytics() {
 }
 export function useReportsAnalytics() {
   return useSWR("/api/analytics/reports", fetcher);
+}
+export function useSales360Summary(from?: string, to?: string, timezone?: string, currency?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (timezone) params.set("timezone", timezone);
+  if (currency) params.set("currency", currency);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useSWR(`/api/analytics/sales-360/summary${suffix}`, fetcher);
+}
+export function useSales360Timeseries(from?: string, to?: string, timezone?: string, currency?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (timezone) params.set("timezone", timezone);
+  if (currency) params.set("currency", currency);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useSWR(`/api/analytics/sales-360/timeseries${suffix}`, fetcher);
+}
+export function useSales360Breakdown(from?: string, to?: string, timezone?: string, currency?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (timezone) params.set("timezone", timezone);
+  if (currency) params.set("currency", currency);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useSWR(`/api/analytics/sales-360/breakdown${suffix}`, fetcher);
+}
+export function useSales360Reconcile(from?: string, to?: string, timezone?: string, currency?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (timezone) params.set("timezone", timezone);
+  if (currency) params.set("currency", currency);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useSWR(`/api/analytics/sales-360/reconcile${suffix}`, fetcher);
+}
+export async function runSales360Backfill() {
+  return mutate(
+    "/api/analytics/sales-360/backfill",
+    { method: "POST" },
+    "Failed to backfill sales ledger",
+  );
 }
 
 // ---- Tax Rules ----

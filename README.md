@@ -26,6 +26,7 @@
 - **Provider setup flows in UI** - Payment method setup launch for Stripe/Xendit from Billing Portal, plus provider settings management in Settings.
 - **Provider-grade auto-charge settlement** - Auto-charge persists provider references and classifies transient vs permanent failures.
 - **Comprehensive E2E coverage** - Playwright smoke/core suites now validate frontend-to-backend flows and run in CI; provider sandbox tests run nightly.
+- **Sales ledger hardening gates** - CI now enforces reconciliation, idempotency, partition-pruning diagnostics, and reversal-link integrity tests.
 
 ## Features
 
@@ -141,6 +142,8 @@ The Next.js frontend proxies API calls through `app/api/[...path]/route.ts` to R
 ## Documentation
 
 - [License Integration Guide](docs/license-integration-guide.md) — Comprehensive guide for integrating RustBill license verification into your applications (Node.js, Python, Go, C#)
+- [Frontend-to-Backend E2E Plan](docs/testing/e2e-frontend-backend-plan.md) — E2E scope plus backend ledger integrity test gates
+- [Sales Ledger Drift Runbook](docs/testing/sales-ledger-drift-runbook.md) — How to diagnose CI failures for Sales 360 idempotency, reconciliation, and reversal-link integrity
 
 ## Development
 

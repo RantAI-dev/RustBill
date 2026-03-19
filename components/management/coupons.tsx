@@ -246,9 +246,17 @@ export function ManageCouponsSection() {
                   <TableCell className="text-muted-foreground">{coupon.name as string}</TableCell>
                   <TableCell>{(coupon.discountType as string) === "percentage" ? "%" : "$"}</TableCell>
                   <TableCell className="text-right font-medium">
-                    {(coupon.discountType as string) === "percentage"
-                      ? `${coupon.discountValue as number}%`
-                      : `$${(coupon.discountValue as number).toLocaleString()}`}
+                    {(() => {
+                      const discountType = (coupon.discountType as string) ?? (coupon.discount_type as string);
+                      const discountValue = Number(
+                        (coupon.discountValue as number | string | null | undefined) ??
+                        (coupon.discount_value as number | string | null | undefined) ??
+                        0,
+                      );
+                      return discountType === "percentage"
+                        ? `${discountValue}%`
+                        : `$${discountValue.toLocaleString()}`;
+                    })()}
                   </TableCell>
                   <TableCell>
                     {coupon.timesRedeemed as number}/{coupon.maxRedemptions != null ? coupon.maxRedemptions as number : "\u221E"}
@@ -295,7 +303,19 @@ export function ManageCouponsSection() {
             loading={saving}
           />
           {dialogMode === "view" && (
-            <DialogFooter>
+            <DialogFooter className="w-full sm:justify-between">
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => {
+                  if (selected) {
+                    setDialogOpen(false);
+                    setDeleteTarget(selected);
+                  }
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Delete
+              </Button>
               <Button variant="outline" onClick={() => setDialogMode("edit")}>
                 <Pencil className="w-4 h-4 mr-1" /> Edit
               </Button>

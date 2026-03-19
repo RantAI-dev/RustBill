@@ -1,3 +1,4 @@
+use crate::analytics::sales_ledger::{emit_sales_event, NewSalesEvent, SalesClassification};
 use crate::db::models::*;
 use crate::error::{BillingError, Result};
 use crate::notifications::email::EmailSender;
@@ -208,6 +209,64 @@ async fn create_payment_inner(
     let invoice_became_paid = net_paid >= invoice.amount_due;
 
     tx.commit().await?;
+
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: chrono::Utc::now(),
+            event_type: "payment.collected",
+            classification: SalesClassification::Collections,
+            amount_subtotal: payment.amount,
+            amount_tax: Decimal::ZERO,
+            amount_total: payment.amount,
+            currency: &invoice.currency,
+            customer_id: Some(&invoice.customer_id),
+            subscription_id: invoice.subscription_id.as_deref(),
+            product_id: None,
+            invoice_id: Some(&invoice.id),
+            payment_id: Some(&payment.id),
+            source_table: "payments",
+            source_id: &payment.id,
+            metadata: Some(serde_json::json!({
+                "method": payment.method,
+                "reference": payment.reference,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, payment_id = %payment.id, "failed to emit sales event payment.collected");
+    }
+
+    if invoice_became_paid {
+        if let Err(err) = emit_sales_event(
+            pool,
+            NewSalesEvent {
+                occurred_at: chrono::Utc::now(),
+                event_type: "invoice.paid",
+                classification: SalesClassification::Collections,
+                amount_subtotal: invoice.subtotal,
+                amount_tax: invoice.tax,
+                amount_total: invoice.total,
+                currency: &invoice.currency,
+                customer_id: Some(&invoice.customer_id),
+                subscription_id: invoice.subscription_id.as_deref(),
+                product_id: None,
+                invoice_id: Some(&invoice.id),
+                payment_id: Some(&payment.id),
+                source_table: "invoices",
+                source_id: &invoice.id,
+                metadata: Some(serde_json::json!({
+                    "trigger": "payment",
+                })),
+            },
+        )
+        .await
+        {
+            tracing::warn!(error = %err, invoice_id = %invoice.id, "failed to emit sales event invoice.paid");
+        }
+    }
+
     Ok((payment, invoice, invoice_became_paid))
 }
 

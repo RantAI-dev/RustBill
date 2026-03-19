@@ -2,8 +2,10 @@ mod common;
 
 use axum_test::TestServer;
 use common::*;
+use rust_decimal::Decimal;
 use serde_json::json;
 use sqlx::PgPool;
+use std::str::FromStr;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -172,6 +174,63 @@ async fn soft_delete_invoice_voids(pool: PgPool) {
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
     assert_eq!(body["status"].as_str().unwrap(), "void");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn deleting_invoice_emits_reversal_with_metadata(pool: PgPool) {
+    let (server, token, customer_id) = setup(pool.clone()).await;
+
+    let create_resp = server
+        .post("/api/billing/invoices")
+        .add_cookie(cookie::Cookie::new("session", token.clone()))
+        .json(&json!({
+            "customerId": customer_id,
+            "currency": "USD",
+            "subtotal": 1000,
+            "tax": 100,
+            "total": 1100
+        }))
+        .await;
+    create_resp.assert_status(axum::http::StatusCode::CREATED);
+    let created: serde_json::Value = create_resp.json();
+    let invoice_id = created["id"].as_str().unwrap();
+
+    let delete_resp = server
+        .delete(&format!("/api/billing/invoices/{invoice_id}"))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .await;
+    delete_resp.assert_status_ok();
+
+    let reversal: serde_json::Value = sqlx::query_scalar(
+        r#"SELECT to_jsonb(se)
+           FROM sales_events se
+           WHERE se.source_table = 'invoices'
+             AND se.source_id = $1
+             AND se.event_type = 'invoice.reversal'
+           ORDER BY se.created_at DESC
+           LIMIT 1"#,
+    )
+    .bind(invoice_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let amount_total = match &reversal["amount_total"] {
+        serde_json::Value::String(s) => Decimal::from_str(s).unwrap(),
+        serde_json::Value::Number(n) => Decimal::from_str(&n.to_string()).unwrap(),
+        other => panic!("unexpected amount_total shape: {other:?}"),
+    };
+    assert_eq!(amount_total, Decimal::from(-1100));
+    assert_eq!(
+        reversal["metadata"]["reversal_of_event_type"],
+        json!("invoice.created")
+    );
+    assert!(
+        reversal["metadata"]["reversal_of_event_id"]
+            .as_str()
+            .is_some(),
+        "expected reversal_of_event_id metadata"
+    );
 }
 
 #[sqlx::test(migrations = "../../migrations")]

@@ -25,7 +25,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { useReportsAnalytics } from "@/hooks/use-api";
+import { useReportsAnalytics, useSales360Summary } from "@/hooks/use-api";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function ReportCard({
@@ -61,11 +61,24 @@ function ReportCard({
 
 export function ReportsSection() {
   const { data, isLoading } = useReportsAnalytics();
+  const { data: sales360 } = useSales360Summary();
 
   const conversionData = data?.conversionData ?? [];
   const sourceData = data?.sourceData ?? [];
   const reports = data?.reports ?? [];
   const yoyChange = data?.yoyChange ?? "+0%";
+  const salesSummary = (sales360?.summary ?? {}) as Record<string, { total?: number }>;
+
+  const salesCards = [
+    { label: "Bookings", key: "bookings" },
+    { label: "Billings", key: "billings" },
+    { label: "Collections", key: "collections" },
+    { label: "Adjustments", key: "adjustments" },
+    { label: "Recurring", key: "recurring" },
+  ].map((item) => ({
+    ...item,
+    value: Number(salesSummary[item.key]?.total ?? 0),
+  }));
 
   if (isLoading) {
     return (
@@ -84,6 +97,21 @@ export function ReportsSection() {
 
   return (
     <div className="space-y-6">
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-foreground">Sales 360 (Last 30 Days)</h3>
+          <span className="text-xs text-muted-foreground">Bookings vs Billing vs Collections</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {salesCards.map((card) => (
+            <div key={card.key} className="rounded-lg border border-border/60 bg-secondary/30 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{card.label}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">${card.value.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Quick report cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <ReportCard

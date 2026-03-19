@@ -24,6 +24,7 @@ const sectionTitles: Record<Section, string> = {
   products: "Product Performance",
   forecasting: "Revenue Forecasting",
   reports: "Reports",
+  "sales-360": "Sales 360",
   settings: "Settings",
   "api-docs": "API Documentation",
   "manage-products": "Manage Products",

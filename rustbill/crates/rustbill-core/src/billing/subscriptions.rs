@@ -1,3 +1,4 @@
+use crate::analytics::sales_ledger::{emit_sales_event, NewSalesEvent, SalesClassification};
 use crate::db::models::*;
 use crate::error::{BillingError, Result};
 use chrono::{NaiveDateTime, Utc};
@@ -157,6 +158,35 @@ pub async fn create_subscription(
     .bind(&req.stripe_subscription_id)
     .fetch_one(pool)
     .await?;
+
+    if let Err(err) = emit_sales_event(
+        pool,
+        NewSalesEvent {
+            occurred_at: chrono::Utc::now(),
+            event_type: "subscription.created",
+            classification: SalesClassification::Recurring,
+            amount_subtotal: rust_decimal::Decimal::ZERO,
+            amount_tax: rust_decimal::Decimal::ZERO,
+            amount_total: rust_decimal::Decimal::ZERO,
+            currency: "USD",
+            customer_id: Some(&row.customer_id),
+            subscription_id: Some(&row.id),
+            product_id: None,
+            invoice_id: None,
+            payment_id: None,
+            source_table: "subscriptions",
+            source_id: &row.id,
+            metadata: Some(serde_json::json!({
+                "status": row.status,
+                "plan_id": row.plan_id,
+                "quantity": row.quantity,
+            })),
+        },
+    )
+    .await
+    {
+        tracing::warn!(error = %err, subscription_id = %row.id, "failed to emit sales event subscription.created");
+    }
 
     Ok(row)
 }

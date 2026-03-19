@@ -3,7 +3,9 @@ use crate::extractors::AdminUser;
 use crate::routes::ApiResult;
 use axum::{
     extract::{Query, State},
-    routing::get,
+    http::header,
+    response::IntoResponse,
+    routing::{get, post},
     Json, Router,
 };
 use rust_decimal::Decimal;
@@ -13,6 +15,479 @@ pub fn router() -> Router<SharedState> {
         .route("/overview", get(overview))
         .route("/forecasting", get(forecasting))
         .route("/reports", get(reports))
+        .route("/sales-360/summary", get(sales_360_summary))
+        .route("/sales-360/timeseries", get(sales_360_timeseries))
+        .route("/sales-360/breakdown", get(sales_360_breakdown))
+        .route("/sales-360/reconcile", get(sales_360_reconcile))
+        .route("/sales-360/export", get(sales_360_export))
+        .route("/sales-360/backfill", post(sales_360_backfill))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Sales360Params {
+    from: Option<String>,
+    to: Option<String>,
+    timezone: Option<String>,
+    currency: Option<String>,
+}
+
+fn parse_window(
+    params: &Sales360Params,
+) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
+    use chrono::{Duration, NaiveDate, Utc};
+    let default_to = Utc::now();
+    let default_from = default_to - Duration::days(30);
+
+    let from = params
+        .from
+        .as_deref()
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+        .unwrap_or(default_from);
+
+    let to = params
+        .to
+        .as_deref()
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+        .and_then(|d| d.and_hms_opt(23, 59, 59))
+        .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+        .unwrap_or(default_to);
+
+    (from, to)
+}
+
+fn parse_timezone(params: &Sales360Params) -> String {
+    params
+        .timezone
+        .as_deref()
+        .map(str::trim)
+        .filter(|tz| !tz.is_empty())
+        .unwrap_or("UTC")
+        .to_string()
+}
+
+fn parse_currency(params: &Sales360Params) -> Option<String> {
+    params
+        .currency
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(|c| c.to_ascii_uppercase())
+}
+
+async fn sales_360_summary(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Query(params): Query<Sales360Params>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (from, to) = parse_window(&params);
+    let timezone = parse_timezone(&params);
+    let currency = parse_currency(&params);
+
+    let rows: Vec<(String, Option<Decimal>, Option<Decimal>, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT
+          classification,
+          COALESCE(SUM(amount_subtotal), 0) AS subtotal,
+          COALESCE(SUM(amount_tax), 0) AS tax,
+          COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($3::text IS NULL OR currency = $3)
+        GROUP BY classification
+        ORDER BY classification
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let by_currency_rows: Vec<(String, String, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT currency, classification, COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($3::text IS NULL OR currency = $3)
+        GROUP BY currency, classification
+        ORDER BY currency ASC, classification ASC
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let available_currencies_rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT currency
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+        ORDER BY currency ASC
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let mut summary = serde_json::Map::new();
+    for (classification, subtotal, tax, total) in rows {
+        summary.insert(
+            classification,
+            serde_json::json!({
+                "subtotal": decimal_to_i64(subtotal.unwrap_or_default()),
+                "tax": decimal_to_i64(tax.unwrap_or_default()),
+                "total": decimal_to_i64(total.unwrap_or_default()),
+            }),
+        );
+    }
+
+    let mut by_currency: std::collections::BTreeMap<
+        String,
+        serde_json::Map<String, serde_json::Value>,
+    > = std::collections::BTreeMap::new();
+    for (row_currency, classification, total) in by_currency_rows {
+        let entry = by_currency.entry(row_currency).or_default();
+        entry.insert(
+            classification,
+            serde_json::Value::from(decimal_to_i64(total.unwrap_or_default())),
+        );
+    }
+
+    let available_currencies: Vec<String> = available_currencies_rows
+        .into_iter()
+        .map(|(value,)| value)
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "from": from.to_rfc3339(),
+        "to": to.to_rfc3339(),
+        "timezone": timezone,
+        "currency": currency,
+        "availableCurrencies": available_currencies,
+        "summary": summary,
+        "byCurrency": by_currency,
+    })))
+}
+
+async fn sales_360_timeseries(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Query(params): Query<Sales360Params>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (from, to) = parse_window(&params);
+    let timezone = parse_timezone(&params);
+    let currency = parse_currency(&params);
+
+    let rows: Vec<(String, String, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT
+          to_char(date_trunc('day', timezone($3, occurred_at)), 'YYYY-MM-DD') AS day,
+          classification,
+          COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($4::text IS NULL OR currency = $4)
+        GROUP BY day, classification
+        ORDER BY day ASC, classification ASC
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(&timezone)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let mut grouped: std::collections::BTreeMap<
+        String,
+        serde_json::Map<String, serde_json::Value>,
+    > = std::collections::BTreeMap::new();
+
+    for (day, classification, total) in rows {
+        let entry = grouped.entry(day.clone()).or_insert_with(|| {
+            let mut base = serde_json::Map::new();
+            base.insert("day".to_string(), serde_json::Value::String(day));
+            base
+        });
+        entry.insert(
+            classification,
+            serde_json::Value::from(decimal_to_i64(total.unwrap_or_default())),
+        );
+    }
+
+    let data: Vec<serde_json::Value> = grouped
+        .into_values()
+        .map(serde_json::Value::Object)
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "from": from.to_rfc3339(),
+        "to": to.to_rfc3339(),
+        "timezone": timezone,
+        "currency": currency,
+        "data": data,
+    })))
+}
+
+async fn sales_360_breakdown(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Query(params): Query<Sales360Params>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (from, to) = parse_window(&params);
+    let timezone = parse_timezone(&params);
+    let currency = parse_currency(&params);
+
+    let by_event: Vec<(String, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT event_type, COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($3::text IS NULL OR currency = $3)
+        GROUP BY event_type
+        ORDER BY total DESC
+        LIMIT 20
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let by_customer: Vec<(Option<String>, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT customer_id, COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($3::text IS NULL OR currency = $3)
+        GROUP BY customer_id
+        ORDER BY total DESC
+        LIMIT 20
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    Ok(Json(serde_json::json!({
+        "from": from.to_rfc3339(),
+        "to": to.to_rfc3339(),
+        "timezone": timezone,
+        "currency": currency,
+        "byEventType": by_event.into_iter().map(|(event_type, total)| serde_json::json!({
+            "eventType": event_type,
+            "total": decimal_to_i64(total.unwrap_or_default()),
+        })).collect::<Vec<_>>(),
+        "byCustomer": by_customer.into_iter().map(|(customer_id, total)| serde_json::json!({
+            "customerId": customer_id,
+            "total": decimal_to_i64(total.unwrap_or_default()),
+        })).collect::<Vec<_>>(),
+    })))
+}
+
+async fn sales_360_backfill(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+) -> ApiResult<Json<serde_json::Value>> {
+    let result = rustbill_core::analytics::sales_ledger::backfill_sales_events(&state.db).await?;
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "result": result,
+    })))
+}
+
+async fn sales_360_reconcile(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Query(params): Query<Sales360Params>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let (from, to) = parse_window(&params);
+    let timezone = parse_timezone(&params);
+    let currency = parse_currency(&params);
+
+    let rows: Vec<(String, Option<Decimal>, Option<Decimal>, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT
+          se.classification,
+          COALESCE(SUM(se.amount_total), 0) AS ledger_total,
+          COALESCE(SUM(
+            CASE
+              WHEN se.source_table = 'deals' THEN COALESCE((SELECT d.value FROM deals d WHERE d.id = se.source_id), 0)
+              WHEN se.source_table = 'invoices' THEN COALESCE((SELECT i.total FROM invoices i WHERE i.id = se.source_id AND i.deleted_at IS NULL), 0)
+              WHEN se.source_table = 'payments' THEN COALESCE((SELECT p.amount FROM payments p WHERE p.id = se.source_id), 0)
+              WHEN se.source_table = 'credit_notes' THEN COALESCE((SELECT cn.amount FROM credit_notes cn WHERE cn.id = se.source_id AND cn.deleted_at IS NULL), 0)
+              WHEN se.source_table = 'refunds' THEN COALESCE((SELECT r.amount FROM refunds r WHERE r.id = se.source_id AND r.deleted_at IS NULL), 0)
+              WHEN se.source_table = 'subscriptions' THEN 0
+              ELSE 0
+            END
+          ), 0) AS source_total,
+          COUNT(*)::bigint AS event_count,
+          SUM(
+            CASE
+              WHEN se.source_table = 'deals' AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.id = se.source_id) THEN 1
+              WHEN se.source_table = 'invoices' AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.id = se.source_id AND i.deleted_at IS NULL) THEN 1
+              WHEN se.source_table = 'payments' AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.id = se.source_id) THEN 1
+              WHEN se.source_table = 'credit_notes' AND NOT EXISTS (SELECT 1 FROM credit_notes cn WHERE cn.id = se.source_id AND cn.deleted_at IS NULL) THEN 1
+              WHEN se.source_table = 'refunds' AND NOT EXISTS (SELECT 1 FROM refunds r WHERE r.id = se.source_id AND r.deleted_at IS NULL) THEN 1
+              WHEN se.source_table = 'subscriptions' AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.id = se.source_id AND s.deleted_at IS NULL) THEN 1
+              ELSE 0
+            END
+          )::bigint AS missing_sources
+        FROM sales_events se
+        WHERE se.occurred_at >= $1 AND se.occurred_at <= $2
+          AND ($3::text IS NULL OR se.currency = $3)
+        GROUP BY se.classification
+        ORDER BY se.classification ASC
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let mut by_classification: std::collections::BTreeMap<String, serde_json::Value> =
+        std::collections::BTreeMap::new();
+
+    for (classification, ledger_total, source_total, event_count, missing_sources) in rows {
+        let ledger_total = decimal_to_i64(ledger_total.unwrap_or_default());
+        let source_total = decimal_to_i64(source_total.unwrap_or_default());
+        let delta = ledger_total - source_total;
+        let status = if delta == 0 && missing_sources == 0 {
+            "ok"
+        } else {
+            "drift"
+        };
+
+        by_classification.insert(
+            classification,
+            serde_json::json!({
+                "ledgerTotal": ledger_total,
+                "sourceTotal": source_total,
+                "delta": delta,
+                "eventCount": event_count,
+                "missingSources": missing_sources,
+                "status": status,
+            }),
+        );
+    }
+
+    for classification in [
+        "bookings",
+        "billings",
+        "collections",
+        "adjustments",
+        "recurring",
+    ] {
+        by_classification
+            .entry(classification.to_string())
+            .or_insert_with(|| {
+                serde_json::json!({
+                    "ledgerTotal": 0,
+                    "sourceTotal": 0,
+                    "delta": 0,
+                    "eventCount": 0,
+                    "missingSources": 0,
+                    "status": "ok",
+                })
+            });
+    }
+
+    Ok(Json(serde_json::json!({
+        "from": from.to_rfc3339(),
+        "to": to.to_rfc3339(),
+        "timezone": timezone,
+        "currency": currency,
+        "rows": by_classification,
+    })))
+}
+
+async fn sales_360_export(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Query(params): Query<Sales360Params>,
+) -> ApiResult<impl IntoResponse> {
+    let (from, to) = parse_window(&params);
+    let currency = parse_currency(&params);
+
+    let by_event: Vec<(String, String, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT event_type, currency, COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($3::text IS NULL OR currency = $3)
+        GROUP BY event_type, currency
+        ORDER BY total DESC
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let by_customer: Vec<(Option<String>, String, Option<Decimal>)> = sqlx::query_as(
+        r#"
+        SELECT customer_id, currency, COALESCE(SUM(amount_total), 0) AS total
+        FROM sales_events
+        WHERE occurred_at >= $1 AND occurred_at <= $2
+          AND ($3::text IS NULL OR currency = $3)
+        GROUP BY customer_id, currency
+        ORDER BY total DESC
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .bind(currency.as_deref())
+    .fetch_all(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?;
+
+    let mut csv = String::from("section,key,currency,total\n");
+    for (event_type, row_currency, total) in by_event {
+        csv.push_str(&format!(
+            "event_type,{},{},{}\n",
+            event_type,
+            row_currency,
+            decimal_to_i64(total.unwrap_or_default())
+        ));
+    }
+    for (customer_id, row_currency, total) in by_customer {
+        csv.push_str(&format!(
+            "customer,{},{},{}\n",
+            customer_id.unwrap_or_else(|| "unknown".to_string()),
+            row_currency,
+            decimal_to_i64(total.unwrap_or_default())
+        ));
+    }
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"sales-360-export.csv\"",
+            ),
+        ],
+        csv,
+    ))
 }
 
 async fn overview(

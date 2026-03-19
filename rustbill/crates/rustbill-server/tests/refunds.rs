@@ -144,3 +144,82 @@ async fn delete_refund(pool: PgPool) {
 
     resp.assert_status(axum::http::StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn completing_refund_emits_sales_event(pool: PgPool) {
+    let (server, token, _cid, invoice_id, payment_id) = setup(pool.clone()).await;
+    let refund_id = insert_refund(&pool, &payment_id, &invoice_id, 2000, "pending").await;
+
+    let resp = server
+        .put(&format!("/api/billing/refunds/{refund_id}"))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .json(&json!({ "status": "completed" }))
+        .await;
+    resp.assert_status_ok();
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sales_events WHERE source_table = 'refunds' AND source_id = $1 AND event_type = 'refund.completed'",
+    )
+    .bind(&refund_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(event_count, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn deleting_completed_refund_emits_reversal_metadata(pool: PgPool) {
+    let (server, token, _cid, invoice_id, payment_id) = setup(pool.clone()).await;
+
+    let create_resp = server
+        .post("/api/billing/refunds")
+        .add_cookie(cookie::Cookie::new("session", token.clone()))
+        .json(&json!({
+            "paymentId": payment_id,
+            "invoiceId": invoice_id,
+            "amount": 1500,
+            "reason": "test"
+        }))
+        .await;
+    create_resp.assert_status(axum::http::StatusCode::CREATED);
+    let created: serde_json::Value = create_resp.json();
+    let refund_id = created["id"].as_str().unwrap().to_string();
+
+    let complete_resp = server
+        .put(&format!("/api/billing/refunds/{refund_id}"))
+        .add_cookie(cookie::Cookie::new("session", token.clone()))
+        .json(&json!({ "status": "completed" }))
+        .await;
+    complete_resp.assert_status_ok();
+
+    let delete_resp = server
+        .delete(&format!("/api/billing/refunds/{refund_id}"))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .await;
+    delete_resp.assert_status_ok();
+
+    let reversal: serde_json::Value = sqlx::query_scalar(
+        r#"SELECT to_jsonb(se)
+           FROM sales_events se
+           WHERE se.source_table = 'refund_revisions'
+             AND se.source_id = $1
+             AND se.event_type = 'refund.reversal'
+           ORDER BY se.created_at DESC
+           LIMIT 1"#,
+    )
+    .bind(&refund_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        reversal["metadata"]["reversal_of_event_type"],
+        json!("refund.completed")
+    );
+    assert!(
+        reversal["metadata"]["reversal_of_event_id"]
+            .as_str()
+            .is_some(),
+        "expected reversal_of_event_id metadata"
+    );
+}
