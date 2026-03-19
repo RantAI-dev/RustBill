@@ -29,6 +29,9 @@ import {
   Tag,
   Globe,
   UserCircle,
+  FileBadge,
+  Activity,
+  Coins,
 } from "lucide-react";
 
 interface CommandPaletteProps {
@@ -45,11 +48,15 @@ const sectionNav: { id: Section; label: string; icon: React.ElementType; group: 
   { id: "reports", label: "Reports", icon: BarChart3, group: "Dashboard" },
   { id: "sales-360", label: "Sales 360", icon: BarChart3, group: "Dashboard" },
   { id: "billing", label: "Billing", icon: CreditCard, group: "Dashboard" },
+  { id: "sales-one-time", label: "One-Time", icon: FileBadge, group: "Sales" },
+  { id: "sales-subscriptions", label: "Subscriptions", icon: RefreshCw, group: "Sales" },
+  { id: "sales-usage", label: "Usage Events", icon: Activity, group: "Sales" },
+  { id: "sales-credits", label: "Token Credits", icon: Coins, group: "Sales" },
+  { id: "sales-licenses", label: "Licenses", icon: KeyRound, group: "Sales" },
   { id: "manage-products", label: "Manage Products", icon: Package, group: "Management" },
   { id: "manage-customers", label: "Manage Customers", icon: Building2, group: "Management" },
   { id: "manage-licenses", label: "Manage Licenses", icon: KeyRound, group: "Management" },
   { id: "manage-plans", label: "Pricing Plans", icon: Receipt, group: "Management" },
-  { id: "manage-subscriptions", label: "Subscriptions", icon: RefreshCw, group: "Management" },
   { id: "manage-invoices", label: "Invoices", icon: FileText, group: "Management" },
   { id: "manage-coupons", label: "Coupons", icon: Tag, group: "Management" },
   { id: "manage-webhooks", label: "Webhooks", icon: Globe, group: "Management" },
@@ -138,7 +145,7 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps) {
             {results.licenses?.length > 0 && (
               <CommandGroup heading="Licenses">
                 {results.licenses.map((l: { key: string; customerName: string; productName: string; status: string }) => (
-                  <CommandItem key={l.key} onSelect={() => navigate("manage-licenses")}>
+                  <CommandItem key={l.key} onSelect={() => navigate("sales-licenses")}>
                     <KeyRound className="w-4 h-4 mr-2 text-muted-foreground" />
                     <span>{l.customerName} — {l.productName}</span>
                     <span className="ml-auto text-xs text-muted-foreground">{l.status}</span>
@@ -162,7 +169,7 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps) {
             {results.subscriptions?.length > 0 && (
               <CommandGroup heading="Subscriptions">
                 {results.subscriptions.map((s: { id: string; customerName: string; planName: string; status: string }) => (
-                  <CommandItem key={s.id} onSelect={() => navigate("manage-subscriptions")}>
+                  <CommandItem key={s.id} onSelect={() => navigate("sales-subscriptions")}>
                     <RefreshCw className="w-4 h-4 mr-2 text-muted-foreground" />
                     <span>{s.customerName} — {s.planName}</span>
                     <span className="ml-auto text-xs text-muted-foreground">{s.status}</span>

@@ -26,16 +26,22 @@ import { ManageInvoicesSection } from "@/components/management/invoices";
 import { ManageCouponsSection } from "@/components/management/coupons";
 import { ManageWebhooksSection } from "@/components/management/webhooks";
 import { TaxRulesManagement } from "@/components/management/tax-rules";
+import { OneTimeSalesSection } from "@/components/sales/one-time-sales";
+import { SubscriptionSalesSection } from "@/components/sales/subscription-sales";
+import { UsageSalesSection } from "@/components/sales/usage-sales";
+import { TokenCreditsSalesSection } from "@/components/sales/token-credits-sales";
+import { LicenseSalesSection } from "@/components/sales/license-sales";
 import { BillingPortalSection } from "@/components/dashboard/sections/billing-portal";
 import { ApiProvider } from "@/hooks/use-api";
 import { BackendBanner } from "@/components/backend-banner";
 
 export type Section =
   | "overview" | "trials" | "deals" | "customers" | "licenses" | "products" | "forecasting" | "reports" | "sales-360" | "settings" | "api-docs" | "billing"
+  | "sales-one-time" | "sales-subscriptions" | "sales-usage" | "sales-credits" | "sales-licenses"
   | "manage-products" | "manage-deals" | "manage-customers" | "manage-licenses" | "manage-plans" | "manage-subscriptions" | "manage-invoices" | "manage-coupons"
   | "manage-webhooks" | "manage-tax-rules" | "billing-portal";
 
-export type PrimarySection = "dashboard" | "management" | "portal" | "system";
+export type PrimarySection = "dashboard" | "sales" | "management" | "portal" | "system";
 
 type DashboardView =
   | "overview"
@@ -66,6 +72,7 @@ function isDashboardView(section: Section): section is DashboardView {
 
 function getPrimarySection(section: Section): PrimarySection {
   if (isDashboardView(section)) return "dashboard";
+  if (section.startsWith("sales-")) return "sales";
   if (section.startsWith("manage-")) return "management";
   if (section === "billing-portal") return "portal";
   return "system";
@@ -139,6 +146,16 @@ export default function Dashboard() {
         return <ApiDocsSection />;
       case "manage-products":
         return <ManageProductsSection />;
+      case "sales-one-time":
+        return <OneTimeSalesSection />;
+      case "sales-subscriptions":
+        return <SubscriptionSalesSection />;
+      case "sales-usage":
+        return <UsageSalesSection />;
+      case "sales-credits":
+        return <TokenCreditsSalesSection />;
+      case "sales-licenses":
+        return <LicenseSalesSection />;
       case "manage-deals":
         return <ManageDealsSection />;
       case "manage-customers":

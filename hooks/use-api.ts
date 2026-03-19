@@ -611,6 +611,15 @@ export async function createPayment(data: Record<string, unknown>) {
 export function useUsageEvents(subscriptionId: string) {
   return useSWR(subscriptionId ? `/api/billing/usage?subscriptionId=${subscriptionId}` : null, fetcher);
 }
+export async function createUsageEvent(data: Record<string, unknown>) {
+  return mutate("/api/billing/usage", { method: "POST", body: JSON.stringify(data) }, "Failed to record usage event");
+}
+export async function updateUsageEvent(id: string, data: Record<string, unknown>) {
+  return mutate(`/api/billing/usage/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update usage event");
+}
+export async function deleteUsageEvent(id: string) {
+  return mutate(`/api/billing/usage/${id}`, { method: "DELETE" }, "Failed to delete usage event");
+}
 
 // ---- Credit Notes ----
 export function useCreditNotes(invoiceId?: string) {
@@ -790,13 +799,16 @@ export async function deleteTaxRule(id: string) {
 
 // ---- Credits ----
 export function useCustomerCredits(customerId: string | undefined) {
-  return useSWR(
-    customerId ? `/api/billing/credits?customerId=${customerId}` : null,
-    fetcher,
-  );
+  return useSWR(customerId ? `/api/billing/credits/${customerId}` : null, fetcher);
 }
 export async function adjustCredits(data: Record<string, unknown>) {
-  return mutate("/api/billing/credits", { method: "POST", body: JSON.stringify(data) }, "Failed to adjust credits");
+  return mutate("/api/billing/credits/adjust", { method: "POST", body: JSON.stringify(data) }, "Failed to adjust credits");
+}
+export async function updateCreditAdjustment(id: string, data: Record<string, unknown>) {
+  return mutate(`/api/billing/credits/adjust/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update credit adjustment");
+}
+export async function deleteCreditAdjustment(id: string) {
+  return mutate(`/api/billing/credits/adjust/${id}`, { method: "DELETE" }, "Failed to delete credit adjustment");
 }
 
 // ---- Saved Payment Methods ----
