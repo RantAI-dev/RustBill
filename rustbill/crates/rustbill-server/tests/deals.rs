@@ -175,6 +175,30 @@ async fn get_nonexistent_deal_returns_404(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn deals_routes_include_legacy_deprecation_headers(pool: PgPool) {
+    let (server, token) = setup(pool).await;
+
+    let resp = server
+        .get("/api/deals")
+        .add_cookie(cookie::Cookie::new("session", token))
+        .await;
+
+    resp.assert_status_ok();
+    assert_eq!(resp.header("deprecation").to_str().unwrap_or(""), "true");
+    assert_eq!(
+        resp.header("x-rustbill-legacy").to_str().unwrap_or(""),
+        "deals"
+    );
+    assert!(
+        resp.header("link")
+            .to_str()
+            .unwrap_or("")
+            .contains("/api/billing/subscriptions"),
+        "expected successor link header"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn updating_deal_emits_reversal_and_replacement_events(pool: PgPool) {
     let (server, token) = setup(pool.clone()).await;
 

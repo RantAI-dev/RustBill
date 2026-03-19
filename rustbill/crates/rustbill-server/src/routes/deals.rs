@@ -4,15 +4,48 @@ use crate::extractors::{AdminUser, ValidatedJson};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
+    http::{header::HeaderName, HeaderValue, Request},
+    middleware::Next,
+    response::Response,
     routing::get,
     Json, Router,
 };
 use rustbill_core::deals::validation::{CreateDealRequest, UpdateDealRequest};
 
+const LEGACY_LINK_HEADER: &str = "</api/billing/invoices>; rel=\"successor-version\", </api/billing/subscriptions>; rel=\"successor-version\", </api/billing/usage>; rel=\"successor-version\"";
+const LEGACY_SUNSET: &str = "Wed, 31 Dec 2026 23:59:59 GMT";
+
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", get(list).post(create))
         .route("/{id}", get(get_one).put(update).delete(remove))
+        .layer(axum::middleware::from_fn(add_deprecation_headers))
+}
+
+fn set_legacy_headers(res: &mut Response) {
+    let headers = res.headers_mut();
+    headers.insert(
+        HeaderName::from_static("deprecation"),
+        HeaderValue::from_static("true"),
+    );
+    headers.insert(
+        HeaderName::from_static("sunset"),
+        HeaderValue::from_static(LEGACY_SUNSET),
+    );
+    headers.insert(
+        HeaderName::from_static("link"),
+        HeaderValue::from_static(LEGACY_LINK_HEADER),
+    );
+    headers.insert(
+        HeaderName::from_static("x-rustbill-legacy"),
+        HeaderValue::from_static("deals"),
+    );
+}
+
+async fn add_deprecation_headers(req: Request<axum::body::Body>, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    set_legacy_headers(&mut response);
+    response
 }
 
 #[derive(serde::Deserialize)]

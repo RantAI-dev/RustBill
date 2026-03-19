@@ -1,5 +1,6 @@
 pub mod billing;
 pub mod customers;
+// Legacy route group kept for backward compatibility with existing integrations.
 pub mod deals;
 pub mod licenses;
 pub mod products;

@@ -76,6 +76,34 @@ async fn v1_products_list(pool: PgPool) {
     assert!(ids.contains(&p2.as_str()), "product p2 not found in list");
 }
 
+#[sqlx::test(migrations = "../../migrations")]
+async fn v1_deals_routes_include_legacy_deprecation_headers(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let (_id, key) = create_test_api_key(&pool).await;
+
+    let resp = server
+        .get("/api/v1/deals")
+        .add_header(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_str(&format!("Bearer {}", key)).unwrap(),
+        )
+        .await;
+
+    resp.assert_status_ok();
+    assert_eq!(resp.header("deprecation").to_str().unwrap_or(""), "true");
+    assert_eq!(
+        resp.header("x-rustbill-legacy").to_str().unwrap_or(""),
+        "deals"
+    );
+    assert!(
+        resp.header("link")
+            .to_str()
+            .unwrap_or("")
+            .contains("/api/v1/billing/subscriptions"),
+        "expected v1 successor link header"
+    );
+}
+
 // -----------------------------------------------------------------------
 // Test 4: V1 licenses CRUD cycle — create, read, update, delete
 // -----------------------------------------------------------------------
