@@ -10,7 +10,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Package,
-  Handshake,
   Building2,
   Settings,
   KeyRound,
@@ -49,7 +48,6 @@ const navGroups: NavGroup[] = [
     label: "Management",
     items: [
       { id: "manage-products", label: "Products", icon: Package },
-      { id: "manage-deals", label: "Deals", icon: Handshake },
       { id: "manage-customers", label: "Customers", icon: Building2 },
       { id: "manage-licenses", label: "Licenses", icon: KeyRound },
       { id: "manage-plans", label: "Pricing Plans", icon: Receipt },

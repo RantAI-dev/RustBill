@@ -205,6 +205,7 @@ export function ApiDocsSection() {
               <CardTitle className="text-base font-medium flex items-center gap-2">
                 <Handshake className="w-4 h-4 text-chart-3" />
                 Deals
+                <span className="text-[10px] font-medium text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded-full border border-amber-500/20">legacy</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-0">
@@ -214,6 +215,9 @@ export function ApiDocsSection() {
               <EndpointRow method="PUT" path="/deals/:id" description="Update a deal" />
               <EndpointRow method="DELETE" path="/deals/:id" description="Delete a deal" />
               <div className="mt-3 pt-3 border-t border-border space-y-2">
+                <p className="text-xs text-amber-300/90">
+                  Legacy compatibility route. New integrations should use billing-first flows via subscriptions, usage, invoices, and payments.
+                </p>
                 <p className="text-xs text-muted-foreground">
                   <span className="text-foreground font-medium">Filters:</span>{" "}
                   <code className="bg-secondary px-1 py-0.5 rounded font-mono">?type=licensed|saas|api</code>{" "}
@@ -331,11 +335,11 @@ export function ApiDocsSection() {
         <TabsContent value="examples" className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
           <Card className="border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-base font-medium">1. Create a Customer and Record a Deal</CardTitle>
+              <CardTitle className="text-base font-medium">1. Legacy Deal Flow (Deprecated)</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Create a customer, then record a licensed deal. The API auto-generates a license key.
+              <p className="text-sm text-amber-300/90">
+                Legacy only. Prefer billing-first input flows: create subscription + usage or create invoice + payment collection.
               </p>
               <CopyBlock
                 label="Create customer"
@@ -419,11 +423,11 @@ export function ApiDocsSection() {
 
           <Card className="border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-base font-medium">4. Record a Trial</CardTitle>
+              <CardTitle className="text-base font-medium">4. Legacy Trial Deal (Deprecated)</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Create a trial deal with a custom license expiry for evaluation access.
+              <p className="text-sm text-amber-300/90">
+                Legacy only. For new integrations, prefer trial subscriptions with billing lifecycle controls.
               </p>
               <CopyBlock
                 code={`curl -X POST /api/v1/deals \\

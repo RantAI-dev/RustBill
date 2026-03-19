@@ -41,7 +41,6 @@ type DashboardView =
   | "overview"
   | "products"
   | "trials"
-  | "deals"
   | "customers"
   | "licenses"
   | "forecasting"
@@ -53,7 +52,6 @@ const dashboardViews: { id: DashboardView; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "products", label: "Products" },
   { id: "trials", label: "Trials" },
-  { id: "deals", label: "Deals" },
   { id: "customers", label: "Customers" },
   { id: "licenses", label: "Licenses" },
   { id: "forecasting", label: "Forecasting" },

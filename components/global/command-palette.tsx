@@ -15,7 +15,6 @@ import {
 import {
   Package,
   Building2,
-  Handshake,
   KeyRound,
   FileText,
   RefreshCw,
@@ -40,7 +39,6 @@ const sectionNav: { id: Section; label: string; icon: React.ElementType; group: 
   { id: "overview", label: "Overview", icon: LayoutDashboard, group: "Dashboard" },
   { id: "products", label: "Product Performance", icon: Package, group: "Dashboard" },
   { id: "trials", label: "Trials", icon: FlaskConical, group: "Dashboard" },
-  { id: "deals", label: "Deals", icon: Handshake, group: "Dashboard" },
   { id: "customers", label: "Customers", icon: Building2, group: "Dashboard" },
   { id: "licenses", label: "Licenses", icon: KeyRound, group: "Dashboard" },
   { id: "forecasting", label: "Forecasting", icon: TrendingUp, group: "Dashboard" },
@@ -48,7 +46,6 @@ const sectionNav: { id: Section; label: string; icon: React.ElementType; group: 
   { id: "sales-360", label: "Sales 360", icon: BarChart3, group: "Dashboard" },
   { id: "billing", label: "Billing", icon: CreditCard, group: "Dashboard" },
   { id: "manage-products", label: "Manage Products", icon: Package, group: "Management" },
-  { id: "manage-deals", label: "Manage Deals", icon: Handshake, group: "Management" },
   { id: "manage-customers", label: "Manage Customers", icon: Building2, group: "Management" },
   { id: "manage-licenses", label: "Manage Licenses", icon: KeyRound, group: "Management" },
   { id: "manage-plans", label: "Pricing Plans", icon: Receipt, group: "Management" },
@@ -91,7 +88,6 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps) {
   const hasResults = results && (
     results.products?.length > 0 ||
     results.customers?.length > 0 ||
-    results.deals?.length > 0 ||
     results.licenses?.length > 0 ||
     results.invoices?.length > 0 ||
     results.subscriptions?.length > 0
@@ -105,7 +101,7 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps) {
       description="Search across all entities or navigate to a section"
     >
       <CommandInput
-        placeholder="Search products, customers, deals..."
+        placeholder="Search products, customers, invoices..."
         value={query}
         onValueChange={setQuery}
       />
@@ -134,18 +130,6 @@ export function CommandPalette({ onNavigate }: CommandPaletteProps) {
                     <Building2 className="w-4 h-4 mr-2 text-muted-foreground" />
                     <span>{c.name}</span>
                     <span className="ml-auto text-xs text-muted-foreground">{c.tier}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-
-            {results.deals?.length > 0 && (
-              <CommandGroup heading="Deals">
-                {results.deals.map((d: { id: string; company: string; value: number; productName: string }) => (
-                  <CommandItem key={d.id} onSelect={() => navigate("manage-deals")}>
-                    <Handshake className="w-4 h-4 mr-2 text-muted-foreground" />
-                    <span>{d.company}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">${d.value?.toLocaleString()}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

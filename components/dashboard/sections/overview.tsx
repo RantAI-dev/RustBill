@@ -3,7 +3,6 @@
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { RevenueChart } from "@/components/dashboard/charts/revenue-chart";
 import { TrialsSummary } from "@/components/dashboard/charts/trials-summary";
-import { RecentDeals } from "@/components/dashboard/recent-deals";
 import { TopPerformers } from "@/components/dashboard/top-performers";
 import { DollarSign, Users, KeyRound, UserPlus } from "lucide-react";
 import { useOverviewAnalytics } from "@/hooks/use-api";
@@ -67,8 +66,7 @@ export function OverviewSection() {
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RecentDeals />
+      <div className="grid grid-cols-1 gap-6">
         <TopPerformers />
       </div>
     </div>
