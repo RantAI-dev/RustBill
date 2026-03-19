@@ -13,7 +13,8 @@ struct TokenResponse {
 
 #[derive(Debug, Deserialize)]
 struct UserInfo {
-    sub: String,
+    #[serde(rename = "sub")]
+    _sub: String,
     email: Option<String>,
     name: Option<String>,
     preferred_username: Option<String>,
@@ -72,7 +73,7 @@ pub async fn exchange_code(
 }
 
 /// Fetch user info from Keycloak using access token.
-pub async fn get_user_info(
+async fn get_user_info(
     http: &Client,
     config: &KeycloakConfig,
     access_token: &str,

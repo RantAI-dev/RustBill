@@ -32,7 +32,10 @@ pub async fn list_deals(
 
     if let Some(pt) = product_type {
         binds.push(pt.to_string());
-        query.push_str(&format!(" AND product_type = ${}::product_type", binds.len()));
+        query.push_str(&format!(
+            " AND product_type = ${}::product_type",
+            binds.len()
+        ));
     }
     if let Some(dt) = deal_type {
         binds.push(dt.to_string());

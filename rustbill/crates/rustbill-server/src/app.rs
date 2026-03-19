@@ -1,4 +1,4 @@
-use axum::Router;
+use axum::{http::StatusCode, Router};
 use rustbill_core::config::AppConfig;
 use rustbill_core::notifications::email::EmailSender;
 use rustbill_core::settings::provider_settings::ProviderSettingsCache;
@@ -131,6 +131,9 @@ pub fn build_router(state: SharedState) -> Router {
                 .on_response(DefaultOnResponse::new().level(Level::INFO))
                 .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
         )
-        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(30),
+        ))
         .with_state(state)
 }
