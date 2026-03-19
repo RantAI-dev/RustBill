@@ -46,7 +46,7 @@ jobs:
         ports:
           - 5444:5432
         options: >-
-          --health-cmd "pg_isready -U rantai_billing"
+          --health-cmd "pg_isready -U rantai_billing -d rantai_billing_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
@@ -101,7 +101,7 @@ jobs:
         ports:
           - 5444:5432
         options: >-
-          --health-cmd "pg_isready -U rantai_billing"
+          --health-cmd "pg_isready -U rantai_billing -d rantai_billing_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5

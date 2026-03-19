@@ -11,6 +11,8 @@ use tracing::Level;
 
 use crate::routes;
 
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+
 /// Shared application state passed to all handlers.
 pub struct AppState {
     pub db: sqlx::PgPool,
@@ -26,6 +28,9 @@ pub type SharedState = Arc<AppState>;
 pub async fn build_state(config: AppConfig) -> anyhow::Result<SharedState> {
     // Database pool
     let db = rustbill_core::db::pool::create_pool(&config.database).await?;
+
+    // Ensure Rust SQL migrations are applied before serving requests.
+    MIGRATOR.run(&db).await?;
 
     // HTTP client for outbound requests
     let http_client = reqwest::Client::builder()
