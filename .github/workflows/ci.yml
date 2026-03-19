@@ -60,6 +60,10 @@ jobs:
         with:
           workspaces: rustbill
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustbill
+
       - name: Check formatting
         working-directory: rustbill
         run: cargo fmt --all -- --check
@@ -126,6 +130,10 @@ jobs:
 
       - name: Install Playwright browser
         run: bunx playwright install --with-deps chromium
+
+      - name: Prebuild Rust API for e2e web server
+        working-directory: rustbill
+        run: cargo build -p rustbill-server
 
       - name: Run smoke E2E
         run: bun run test:e2e:smoke

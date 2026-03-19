@@ -30,7 +30,7 @@ export default defineConfig({
       command: "cargo run -p rustbill-server",
       cwd: "./rustbill",
       url: "http://127.0.0.1:8787/health",
-      timeout: 180_000,
+      timeout: 420_000,
       reuseExistingServer: !process.env.CI,
       env: {
         ...process.env,

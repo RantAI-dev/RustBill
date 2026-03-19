@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/RantAI-dev/RustBill/actions/workflows/ci.yml"><img src="https://github.com/RantAI-dev/RustBill/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/RantAI-dev/RustBill/actions/workflows/e2e-nightly.yml"><img src="https://github.com/RantAI-dev/RustBill/actions/workflows/e2e-nightly.yml/badge.svg" alt="Nightly E2E" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="License: AGPL-3.0" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.82%2B-orange.svg" alt="Rust 1.82+" /></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5-blue.svg" alt="TypeScript" /></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16-black.svg" alt="Next.js 16" /></a>
@@ -169,7 +169,7 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ## License
 
-This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
 
 ## Star History
 

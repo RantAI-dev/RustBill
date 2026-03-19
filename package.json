@@ -2,6 +2,7 @@
   "name": "rustbill",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "build": "bun --bun next build",
     "dev": "bun --bun next dev",
