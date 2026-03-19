@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { useSubscriptions, useCustomers, usePlans, createSubscription, updateSubscription, deleteSubscription } from "@/hooks/use-api";
+import { useSubscriptions, useCustomers, usePlans, useProducts, createSubscription, updateSubscription, deleteSubscription, createLicense } from "@/hooks/use-api";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DeleteDialog } from "./delete-dialog";
@@ -61,6 +61,10 @@ function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
       ? new Date(sub.currentPeriodEnd as string).toISOString().split("T")[0]
       : "",
     preRenewalInvoiceDays: getPreRenewalInvoiceDays(sub),
+    createLicense: false,
+    licenseStartsAt: "",
+    licenseExpiresAt: "",
+    licenseMaxActivations: "",
   });
 
   // Auto-compute period end and status when plan changes (create mode only)
@@ -237,6 +241,51 @@ function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
             0 disables pre-renewal invoice email for this subscription.
           </p>
         </div>
+
+        {!isView && (
+          <div className="space-y-3 rounded-lg border border-border bg-secondary/30 p-3">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.createLicense}
+                onChange={(e) => setForm({ ...form, createLicense: e.target.checked })}
+              />
+              Generate license for this subscription sale
+            </label>
+            {form.createLicense && (
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelClass}>License Starts (optional)</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={form.licenseStartsAt}
+                    onChange={(e) => setForm({ ...form, licenseStartsAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>License Expires (optional)</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={form.licenseExpiresAt}
+                    onChange={(e) => setForm({ ...form, licenseExpiresAt: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Max Activations (optional)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className={inputClass}
+                    value={form.licenseMaxActivations}
+                    onChange={(e) => setForm({ ...form, licenseMaxActivations: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {!isView && (
@@ -247,6 +296,9 @@ function SubForm({ sub, mode, customers, plans, onSubmit, onCancel, loading }: {
             onClick={() => onSubmit({
               ...form,
               preRenewalInvoiceDays: Math.max(0, Math.min(90, Number(form.preRenewalInvoiceDays) || 0)),
+              licenseStartsAt: form.licenseStartsAt || null,
+              licenseExpiresAt: form.licenseExpiresAt || null,
+              licenseMaxActivations: form.licenseMaxActivations ? Number(form.licenseMaxActivations) : null,
             })}
           >
             {loading ? "Saving..." : isCreate ? "Create" : "Save"}
@@ -261,6 +313,7 @@ export function ManageSubscriptionsSection() {
   const { data: subs, isLoading, mutate } = useSubscriptions();
   const { data: customerList } = useCustomers();
   const { data: planList } = usePlans();
+  const { data: productList } = useProducts();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<DialogMode>("view");
@@ -270,6 +323,7 @@ export function ManageSubscriptionsSection() {
 
   const customers = (customerList || []) as Sub[];
   const plans = (planList || []) as Sub[];
+  const products = (productList || []) as Sub[];
 
   const customerNameById = new Map(
     customers.map((c) => [c.id as string, (c.name as string) ?? "—"]),
@@ -303,17 +357,72 @@ export function ManageSubscriptionsSection() {
   };
 
   const handleSubmit = async (data: Record<string, unknown>) => {
+    const {
+      createLicense: shouldCreateLicense,
+      licenseStartsAt,
+      licenseExpiresAt,
+      licenseMaxActivations,
+      ...subPayload
+    } = data;
+
     setSaving(true);
     if (dialogMode === "create") {
-      const result = await createSubscription(data);
+      const result = await createSubscription(subPayload);
       if (result.success) {
+        if (shouldCreateLicense) {
+          const plan = plans.find((p) => String(p.id) === String(subPayload.planId));
+          const customer = customers.find((c) => String(c.id) === String(subPayload.customerId));
+          const product = products.find((p) => String(p.id) === String(plan?.productId));
+          if (!plan?.productId) {
+            setSaving(false);
+            return toast.error("Selected plan has no product for license generation");
+          }
+          const licenseResult = await createLicense({
+            customerId: subPayload.customerId,
+            customerName: String(customer?.name ?? ""),
+            productId: plan.productId,
+            productName: String(product?.name ?? plan.productName ?? ""),
+            startsAt: licenseStartsAt || null,
+            expiresAt: licenseExpiresAt || null,
+            maxActivations: licenseMaxActivations ?? null,
+            licenseType: "simple",
+          });
+          if (!licenseResult.success) {
+            setSaving(false);
+            return toast.error(licenseResult.error ?? "Subscription created, but failed to generate license");
+          }
+        }
         toast.success("Subscription created");
         setDialogOpen(false);
         mutate();
       }
     } else {
-      const result = await updateSubscription(selected!.id as string, data);
+      const result = await updateSubscription(selected!.id as string, subPayload);
       if (result.success) {
+        if (shouldCreateLicense) {
+          const plan = plans.find((p) => String(p.id) === String(subPayload.planId ?? selected?.planId));
+          const customerId = String(subPayload.customerId ?? selected?.customerId ?? "");
+          const customer = customers.find((c) => String(c.id) === customerId);
+          const product = products.find((p) => String(p.id) === String(plan?.productId));
+          if (!plan?.productId) {
+            setSaving(false);
+            return toast.error("Selected plan has no product for license generation");
+          }
+          const licenseResult = await createLicense({
+            customerId,
+            customerName: String(customer?.name ?? selected?.customerName ?? ""),
+            productId: plan.productId,
+            productName: String(product?.name ?? plan.productName ?? ""),
+            startsAt: licenseStartsAt || null,
+            expiresAt: licenseExpiresAt || null,
+            maxActivations: licenseMaxActivations ?? null,
+            licenseType: "simple",
+          });
+          if (!licenseResult.success) {
+            setSaving(false);
+            return toast.error(licenseResult.error ?? "Subscription updated, but failed to generate license");
+          }
+        }
         toast.success("Subscription updated");
         setDialogOpen(false);
         mutate();
