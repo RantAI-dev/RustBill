@@ -12,6 +12,7 @@ use rustbill_core::db::models::UserRole;
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", get(list).post(record))
+        .route("/{id}", axum::routing::put(update).delete(remove))
         .route("/{subscription_id}/summary", get(summary))
 }
 
@@ -98,4 +99,57 @@ async fn summary(
         "subscriptionId": subscription_id,
         "metrics": rows,
     })))
+}
+
+async fn update(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let row = sqlx::query_scalar::<_, serde_json::Value>(
+        r#"UPDATE usage_events SET
+             metric_name = COALESCE($2, metric_name),
+             value = COALESCE($3, value),
+             timestamp = COALESCE($4::timestamp, timestamp),
+             properties = COALESCE($5, properties)
+           WHERE id = $1
+           RETURNING to_jsonb(usage_events.*)"#,
+    )
+    .bind(&id)
+    .bind(body["metricName"].as_str())
+    .bind(body["value"].as_f64())
+    .bind(body["timestamp"].as_str())
+    .bind(body.get("properties"))
+    .fetch_optional(&state.db)
+    .await
+    .map_err(rustbill_core::error::BillingError::from)?
+    .ok_or_else(|| rustbill_core::error::BillingError::NotFound {
+        entity: "usage_event".into(),
+        id: id.clone(),
+    })?;
+
+    Ok(Json(row))
+}
+
+async fn remove(
+    State(state): State<SharedState>,
+    _user: AdminUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let result = sqlx::query("DELETE FROM usage_events WHERE id = $1")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(rustbill_core::error::BillingError::from)?;
+
+    if result.rows_affected() == 0 {
+        return Err(rustbill_core::error::BillingError::NotFound {
+            entity: "usage_event".into(),
+            id,
+        }
+        .into());
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }

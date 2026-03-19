@@ -64,7 +64,7 @@ async fn create(
 
     let row = sqlx::query_scalar::<_, serde_json::Value>(
         r#"INSERT INTO licenses (key, customer_id, customer_name, product_id, product_name, status, created_at, expires_at, license_type, features, max_activations)
-           VALUES ($1, $2, COALESCE($3, ''), $4, COALESCE($5, ''), 'active', to_char(now(), 'YYYY-MM-DD'), COALESCE($6, ''), COALESCE($7, 'simple'), $8, $9)
+           VALUES ($1, $2, COALESCE($3, ''), $4, COALESCE($5, ''), 'active', COALESCE($6, to_char(now(), 'YYYY-MM-DD')), COALESCE($7, ''), COALESCE($8, 'simple'), $9, $10)
            RETURNING to_jsonb(licenses.*)"#,
     )
     .bind(&key)
@@ -72,6 +72,7 @@ async fn create(
     .bind(body["customerName"].as_str())
     .bind(body["productId"].as_str())
     .bind(body["productName"].as_str())
+    .bind(body["startsAt"].as_str())
     .bind(body["expiresAt"].as_str())
     .bind(body["licenseType"].as_str())
     .bind(body.get("features"))
@@ -95,9 +96,10 @@ async fn update(
              customer_name = COALESCE($3, customer_name),
              product_name = COALESCE($4, product_name),
              max_activations = COALESCE($5, max_activations),
-             expires_at = COALESCE($6, expires_at),
-             license_type = COALESCE($7, license_type),
-             features = COALESCE($8, features)
+             created_at = COALESCE($6, created_at),
+             expires_at = COALESCE($7, expires_at),
+             license_type = COALESCE($8, license_type),
+             features = COALESCE($9, features)
            WHERE key = $1
            RETURNING to_jsonb(licenses.*)"#,
     )
@@ -106,6 +108,7 @@ async fn update(
     .bind(body["customerName"].as_str())
     .bind(body["productName"].as_str())
     .bind(body["maxActivations"].as_i64().map(|v| v as i32))
+    .bind(body["startsAt"].as_str())
     .bind(body["expiresAt"].as_str())
     .bind(body["licenseType"].as_str())
     .bind(body.get("features"))

@@ -25,12 +25,33 @@ pub async fn deposit(
     description: &str,
     invoice_id: Option<&str>,
 ) -> Result<CustomerCredit> {
-    if amount <= Decimal::ZERO {
-        return Err(BillingError::bad_request("deposit amount must be positive"));
+    adjust(
+        pool,
+        customer_id,
+        currency,
+        amount,
+        reason,
+        description,
+        invoice_id,
+    )
+    .await
+}
+
+pub async fn adjust(
+    pool: &PgPool,
+    customer_id: &str,
+    currency: &str,
+    amount: Decimal,
+    reason: CreditReason,
+    description: &str,
+    invoice_id: Option<&str>,
+) -> Result<CustomerCredit> {
+    if amount == Decimal::ZERO {
+        return Err(BillingError::bad_request("adjust amount must be non-zero"));
     }
 
     let mut tx = pool.begin().await?;
-    let credit = deposit_in_tx(
+    let credit = adjust_in_tx(
         &mut tx,
         customer_id,
         currency,
@@ -41,6 +62,65 @@ pub async fn deposit(
     )
     .await?;
     tx.commit().await?;
+    Ok(credit)
+}
+
+pub async fn adjust_in_tx(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    customer_id: &str,
+    currency: &str,
+    amount: Decimal,
+    reason: CreditReason,
+    description: &str,
+    invoice_id: Option<&str>,
+) -> Result<CustomerCredit> {
+    if amount == Decimal::ZERO {
+        return Err(BillingError::bad_request("adjust amount must be non-zero"));
+    }
+
+    let current_balance: Option<Decimal> = sqlx::query_scalar(
+        "SELECT balance FROM customer_credit_balances WHERE customer_id = $1 AND currency = $2 FOR UPDATE",
+    )
+    .bind(customer_id)
+    .bind(currency)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let next_balance = current_balance.unwrap_or(Decimal::ZERO) + amount;
+    if next_balance < Decimal::ZERO {
+        return Err(BillingError::bad_request(
+            "adjustment would result in negative credit balance",
+        ));
+    }
+
+    let balance_row: CustomerCreditBalance = sqlx::query_as(
+        r#"INSERT INTO customer_credit_balances (customer_id, currency, balance, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (customer_id, currency)
+           DO UPDATE SET balance = $3, updated_at = NOW()
+           RETURNING *"#,
+    )
+    .bind(customer_id)
+    .bind(currency)
+    .bind(next_balance)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let credit = sqlx::query_as::<_, CustomerCredit>(
+        r#"INSERT INTO customer_credits (id, customer_id, currency, amount, balance_after, reason, description, invoice_id, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, NOW())
+           RETURNING *"#,
+    )
+    .bind(customer_id)
+    .bind(currency)
+    .bind(amount)
+    .bind(balance_row.balance)
+    .bind(reason)
+    .bind(description)
+    .bind(invoice_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
     Ok(credit)
 }
 
