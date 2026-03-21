@@ -6,6 +6,7 @@ pub mod cron;
 pub mod dunning;
 pub mod events;
 pub mod invoices;
+pub mod one_time_sales;
 pub mod payment_methods;
 pub mod payments;
 pub mod plans;
@@ -23,6 +24,7 @@ pub fn router() -> Router<SharedState> {
         .nest("/plans", plans::router())
         .nest("/subscriptions", subscriptions::router())
         .nest("/invoices", invoices::router())
+        .nest("/one-time-sales", one_time_sales::router())
         .nest("/payments", payments::router())
         .nest("/checkout", checkout::router())
         .nest("/credit-notes", credit_notes::router())
