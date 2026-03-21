@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DeleteDialog } from "@/components/management/delete-dialog";
-import { createInvoice, createLicense, deleteInvoice, updateInvoice, useCustomers, useInvoices, useProducts } from "@/hooks/use-api";
+import { createLicense, createOneTimeSale, deleteOneTimeSale, updateOneTimeSale, useCustomers, useOneTimeSales, useProducts } from "@/hooks/use-api";
 
 type Row = Record<string, unknown>;
 type DialogMode = "create" | "view" | "edit";
@@ -179,17 +179,16 @@ function OneTimeSaleForm({
 }
 
 export function OneTimeSalesSection() {
-  const { data: invoiceList, mutate } = useInvoices();
+  const { data: saleList, mutate } = useOneTimeSales();
   const { data: customerList } = useCustomers();
   const { data: productList } = useProducts();
 
-  const invoices = (invoiceList ?? []) as Row[];
+  const rows = (saleList ?? []) as Row[];
   const customers = (customerList ?? []) as Row[];
   const products = (productList ?? []) as Row[];
   const customerNameById = new Map(
     customers.map((c) => [String(c.id), String(c.name ?? "—")]),
   );
-  const rows = invoices.filter((inv) => !(inv.subscriptionId as string));
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [mode, setMode] = useState<DialogMode>("view");
@@ -222,8 +221,8 @@ export function OneTimeSalesSection() {
 
     setSaving(true);
     const result = mode === "create"
-      ? await createInvoice(invoicePayload)
-      : await updateInvoice(String(selected?.id), invoicePayload);
+      ? await createOneTimeSale(invoicePayload)
+      : await updateOneTimeSale(String(selected?.id), invoicePayload);
 
     if (result.success && shouldCreateLicense) {
       const customerId = String(invoicePayload.customerId ?? "");
@@ -255,7 +254,7 @@ export function OneTimeSalesSection() {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    const result = await deleteInvoice(String(deleteTarget.id));
+    const result = await deleteOneTimeSale(String(deleteTarget.id));
     setDeleting(false);
     if (!result.success) return toast.error(result.error ?? "Failed to delete one-time sale");
     toast.success("One-time sale deleted");

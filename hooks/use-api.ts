@@ -598,6 +598,25 @@ export async function addInvoiceItem(invoiceId: string, data: Record<string, unk
   return mutate(`/api/billing/invoices/${invoiceId}/items`, { method: "POST", body: JSON.stringify(data) }, "Failed to add invoice item");
 }
 
+// ---- One-Time Sales ----
+export function useOneTimeSales() {
+  return useSWR("/api/billing/one-time-sales", async (url: string) => {
+    const rows = await fetcher(url);
+    return Array.isArray(rows)
+      ? rows.map((row) => fromRustInvoice(row as Record<string, unknown>))
+      : [];
+  });
+}
+export async function createOneTimeSale(data: Record<string, unknown>) {
+  return mutate("/api/billing/one-time-sales", { method: "POST", body: JSON.stringify(data) }, "Failed to create one-time sale");
+}
+export async function updateOneTimeSale(id: string, data: Record<string, unknown>) {
+  return mutate(`/api/billing/one-time-sales/${id}`, { method: "PUT", body: JSON.stringify(data) }, "Failed to update one-time sale");
+}
+export async function deleteOneTimeSale(id: string) {
+  return mutate(`/api/billing/one-time-sales/${id}`, { method: "DELETE" }, "Failed to delete one-time sale");
+}
+
 // ---- Payments ----
 export function usePayments(invoiceId?: string) {
   const url = invoiceId ? `/api/billing/payments?invoiceId=${invoiceId}` : "/api/billing/payments";
