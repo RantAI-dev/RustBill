@@ -23,11 +23,7 @@ pub async fn require_session(
         .and_then(|cookies| {
             cookies.split(';').find_map(|c| {
                 let c = c.trim();
-                if c.starts_with("session=") {
-                    Some(c[8..].to_string())
-                } else {
-                    None
-                }
+                c.strip_prefix("session=").map(|value| value.to_string())
             })
         });
 
