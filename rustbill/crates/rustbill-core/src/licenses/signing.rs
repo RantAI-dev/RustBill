@@ -94,14 +94,14 @@ pub fn verify_license(signed: &SignedLicense, public_key_pem: &str) -> Result<bo
 /// -----END SIGNATURE-----
 /// ```
 pub fn to_license_file(signed: &SignedLicense) -> String {
-    let payload_json = serde_json::to_vec(&signed.payload).expect("payload serialization");
+    let payload_json = serde_json::to_vec(&signed.payload).unwrap_or_default();
     let payload_b64 = BASE64.encode(&payload_json);
 
     // Wrap base64 at 76 chars for readability
     let wrap = |s: &str| -> String {
         s.as_bytes()
             .chunks(76)
-            .map(|chunk| std::str::from_utf8(chunk).unwrap())
+            .map(|chunk| chunk.iter().map(|&byte| byte as char).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n")
     };
