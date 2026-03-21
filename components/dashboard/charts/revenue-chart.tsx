@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   AreaChart,
   Area,
@@ -19,15 +19,17 @@ interface RevenueChartProps {
 
 export function RevenueChart({ data, isLoading }: RevenueChartProps) {
   const [isLoaded, setIsLoaded] = useState(false);
+  const chartData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
   useEffect(() => {
-    if (data && data.length > 0) {
+    setIsLoaded(false);
+    if (chartData.length > 0) {
       const timer = setTimeout(() => setIsLoaded(true), 300);
       return () => clearTimeout(timer);
     }
-  }, [data]);
+  }, [chartData]);
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <div className="bg-card border border-border rounded-xl p-5 h-[380px]">
         <Skeleton className="h-6 w-40 mb-2" />
@@ -37,7 +39,7 @@ export function RevenueChart({ data, isLoading }: RevenueChartProps) {
     );
   }
 
-  if (data.length === 0) {
+  if (chartData.length === 0) {
     return (
       <div className="bg-card border border-border rounded-xl p-5 h-[380px] animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div>
@@ -72,7 +74,7 @@ export function RevenueChart({ data, isLoading }: RevenueChartProps) {
 
       <div className={`h-[280px] transition-opacity duration-700 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="oklch(0.7 0.18 220)" stopOpacity={0.4} />
