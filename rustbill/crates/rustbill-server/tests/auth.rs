@@ -117,6 +117,36 @@ async fn login_nonexistent_user(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn keycloak_login_without_config_returns_bad_request(pool: PgPool) {
+    let server = test_server(pool).await;
+
+    let resp = server.get("/api/auth/keycloak/login").await;
+
+    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json();
+    assert_eq!(
+        body["error"].as_str().unwrap(),
+        "Keycloak is not configured"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn keycloak_callback_without_config_returns_bad_request(pool: PgPool) {
+    let server = test_server(pool).await;
+
+    let resp = server
+        .get("/api/auth/keycloak/callback?code=test-code&state=test-state")
+        .await;
+
+    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json();
+    assert_eq!(
+        body["error"].as_str().unwrap(),
+        "Keycloak is not configured"
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn me_with_valid_session(pool: PgPool) {
     let server = test_server(pool.clone()).await;
     let token = create_admin_session(&pool).await;
@@ -155,7 +185,7 @@ async fn logout_clears_session(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["ok"].as_bool().unwrap(), true);
+    assert!(body["ok"].as_bool().unwrap());
 
     // Session should now be invalid
     let resp = server

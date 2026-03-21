@@ -151,7 +151,7 @@ async fn delete_deal(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["success"].as_bool().unwrap(), true);
+    assert!(body["success"].as_bool().unwrap());
 
     // Confirm deletion
     let resp = server

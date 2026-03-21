@@ -40,6 +40,31 @@ async fn insert_test_license(
     key
 }
 
+async fn insert_test_activation(
+    pool: &PgPool,
+    license_key: &str,
+    device_id: &str,
+    device_name: Option<&str>,
+    ip_address: Option<&str>,
+) {
+    let now = chrono::Utc::now().naive_utc();
+
+    sqlx::query(
+        r#"INSERT INTO license_activations
+           (id, license_key, device_id, device_name, ip_address, activated_at, last_seen_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $6)"#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(license_key)
+    .bind(device_id)
+    .bind(device_name)
+    .bind(ip_address)
+    .bind(now)
+    .execute(pool)
+    .await
+    .expect("failed to insert activation");
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -87,7 +112,7 @@ async fn generate_keypair(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["exists"].as_bool().unwrap(), false);
+    assert!(!body["exists"].as_bool().unwrap());
 
     // Generate a keypair
     let resp = server
@@ -97,7 +122,7 @@ async fn generate_keypair(pool: PgPool) {
 
     resp.assert_status(axum::http::StatusCode::CREATED);
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["success"].as_bool().unwrap(), true);
+    assert!(body["success"].as_bool().unwrap());
     assert!(body["publicKey"].as_str().is_some());
     let public_key = body["publicKey"].as_str().unwrap().to_string();
 
@@ -109,7 +134,7 @@ async fn generate_keypair(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["exists"].as_bool().unwrap(), true);
+    assert!(body["exists"].as_bool().unwrap());
     assert_eq!(body["publicKey"].as_str().unwrap(), public_key);
 }
 
@@ -164,7 +189,7 @@ async fn sign_license(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["success"].as_bool().unwrap(), true);
+    assert!(body["success"].as_bool().unwrap());
     assert_eq!(body["license_key"].as_str().unwrap(), key);
     assert!(body["signed_payload"].as_str().is_some());
     assert!(body["signature"].as_str().is_some());
@@ -198,7 +223,7 @@ async fn verify_license_online(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["valid"].as_bool().unwrap(), true);
+    assert!(body["valid"].as_bool().unwrap());
     // The license object is returned under "license"
     assert!(body["license"].is_object());
     assert_eq!(body["license"]["key"].as_str().unwrap(), key);
@@ -264,7 +289,7 @@ async fn delete_license(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["success"].as_bool().unwrap(), true);
+    assert!(body["success"].as_bool().unwrap());
 
     // Confirm it's gone via verify (should return 404)
     let resp = server
@@ -273,4 +298,58 @@ async fn delete_license(pool: PgPool) {
         .await;
 
     resp.assert_status(axum::http::StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_license_activations(pool: PgPool) {
+    let (server, token) = setup(pool.clone()).await;
+    let key = insert_test_license(&pool, None, None).await;
+    insert_test_activation(
+        &pool,
+        &key,
+        "device-123",
+        Some("Test Device"),
+        Some("203.0.113.10"),
+    )
+    .await;
+
+    let resp = server
+        .get(&format!("/api/licenses/{}/activations", key))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .await;
+
+    resp.assert_status_ok();
+    let body: Vec<serde_json::Value> = resp.json();
+    assert_eq!(body.len(), 1);
+    assert_eq!(body[0]["license_key"].as_str().unwrap(), key);
+    assert_eq!(body[0]["device_id"].as_str().unwrap(), "device-123");
+    assert_eq!(body[0]["device_name"].as_str().unwrap(), "Test Device");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn delete_license_activation_by_device_id(pool: PgPool) {
+    let (server, token) = setup(pool.clone()).await;
+    let key = insert_test_license(&pool, None, None).await;
+    insert_test_activation(&pool, &key, "device-456", Some("Laptop"), None).await;
+
+    let resp = server
+        .delete(&format!(
+            "/api/licenses/{}/activations?deviceId=device-456",
+            key
+        ))
+        .add_cookie(cookie::Cookie::new("session", token.clone()))
+        .await;
+
+    resp.assert_status_ok();
+    let body: serde_json::Value = resp.json();
+    assert!(body["success"].as_bool().unwrap());
+
+    let resp = server
+        .get(&format!("/api/licenses/{}/activations", key))
+        .add_cookie(cookie::Cookie::new("session", token))
+        .await;
+
+    resp.assert_status_ok();
+    let body: Vec<serde_json::Value> = resp.json();
+    assert!(body.is_empty());
 }

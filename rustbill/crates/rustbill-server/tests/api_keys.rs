@@ -81,7 +81,7 @@ async fn revoke_api_key(pool: PgPool) {
 
     resp.assert_status_ok();
     let body: serde_json::Value = resp.json();
-    assert_eq!(body["success"].as_bool().unwrap(), true);
+    assert!(body["success"].as_bool().unwrap());
 
     // Revoking the same key again should return 404 (already revoked, revoked_at IS NOT NULL)
     let resp = server

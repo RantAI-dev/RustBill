@@ -68,3 +68,56 @@ async fn checkout_missing_invoice_returns_404(pool: PgPool) {
         body
     );
 }
+
+// -----------------------------------------------------------------------
+// Test 3: Checkout requires an authenticated admin session
+// -----------------------------------------------------------------------
+#[sqlx::test(migrations = "../../migrations")]
+async fn checkout_without_session_returns_unauthorized(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+
+    let customer_id = create_test_customer(&pool).await;
+    let invoice_id = create_test_invoice(&pool, &customer_id).await;
+
+    let resp = server
+        .get(&format!(
+            "/api/billing/checkout?invoiceId={}&provider=stripe",
+            invoice_id
+        ))
+        .await;
+
+    resp.assert_status(axum::http::StatusCode::UNAUTHORIZED);
+    let body: serde_json::Value = resp.json();
+    assert_eq!(body["error"].as_str().unwrap(), "Unauthorized");
+}
+
+// -----------------------------------------------------------------------
+// Test 4: Checkout defaults provider to stripe when provider is omitted
+//
+// The route should still flow through the default stripe path, which surfaces
+// the stripe-specific customer validation error without any external calls.
+// -----------------------------------------------------------------------
+#[sqlx::test(migrations = "../../migrations")]
+async fn checkout_without_provider_defaults_to_stripe(pool: PgPool) {
+    let server = test_server(pool.clone()).await;
+    let token = create_admin_session(&pool).await;
+
+    let customer_id = create_test_customer(&pool).await;
+    let invoice_id = create_test_invoice(&pool, &customer_id).await;
+
+    let resp = server
+        .get(&format!("/api/billing/checkout?invoiceId={}", invoice_id))
+        .add_cookie(Cookie::new("session", token))
+        .await;
+
+    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json();
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Stripe customer ID"),
+        "expected stripe-specific validation error, got: {:?}",
+        body
+    );
+}
