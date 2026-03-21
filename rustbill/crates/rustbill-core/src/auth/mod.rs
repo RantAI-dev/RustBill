@@ -1,6 +1,9 @@
 pub mod api_key;
 pub mod keycloak;
 pub mod password;
+pub mod repository;
+pub mod schema;
+pub mod service;
 pub mod session;
 
 pub use api_key::{generate_api_key, get_key_prefix, hash_api_key};

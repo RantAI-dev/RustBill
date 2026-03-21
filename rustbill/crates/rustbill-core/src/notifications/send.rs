@@ -3,20 +3,9 @@
 //! logs a warning if email is not configured.
 
 use super::email::EmailSender;
-use super::templates;
+use super::repository::PgNotificationsRepository;
+use super::service;
 use sqlx::PgPool;
-
-/// Look up a customer's email address by ID.
-async fn customer_email(pool: &PgPool, customer_id: &str) -> Option<(String, String)> {
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT COALESCE(billing_email, email), name FROM customers WHERE id = $1")
-            .bind(customer_id)
-            .fetch_optional(pool)
-            .await
-            .ok()?;
-
-    row
-}
 
 /// Send an invoice-created notification.
 pub async fn notify_invoice_created(
@@ -27,27 +16,16 @@ pub async fn notify_invoice_created(
     total: &str,
     currency: &str,
 ) {
-    let Some(sender) = email_sender else {
-        tracing::warn!("Email not configured, skipping invoice created notification");
-        return;
-    };
-
-    let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(
-            customer_id,
-            "Could not find customer email for invoice notification"
-        );
-        return;
-    };
-
-    let (subject, html) = templates::invoice_created(&name, invoice_number, total, currency);
-    if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(
-            customer_id,
-            invoice_number,
-            "Failed to send invoice created email"
-        );
-    }
+    let repo = PgNotificationsRepository::new(pool);
+    service::notify_invoice_created(
+        &repo,
+        email_sender,
+        customer_id,
+        invoice_number,
+        total,
+        currency,
+    )
+    .await;
 }
 
 /// Send an invoice-issued notification.
@@ -60,28 +38,17 @@ pub async fn notify_invoice_issued(
     currency: &str,
     due_date: &str,
 ) {
-    let Some(sender) = email_sender else {
-        tracing::warn!("Email not configured, skipping invoice issued notification");
-        return;
-    };
-
-    let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(
-            customer_id,
-            "Could not find customer email for invoice issued notification"
-        );
-        return;
-    };
-
-    let (subject, html) =
-        templates::invoice_issued(&name, invoice_number, total, currency, due_date);
-    if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(
-            customer_id,
-            invoice_number,
-            "Failed to send invoice issued email"
-        );
-    }
+    let repo = PgNotificationsRepository::new(pool);
+    service::notify_invoice_issued(
+        &repo,
+        email_sender,
+        customer_id,
+        invoice_number,
+        total,
+        currency,
+        due_date,
+    )
+    .await;
 }
 
 /// Send a payment-received notification.
@@ -92,23 +59,8 @@ pub async fn notify_payment_received(
     amount: &str,
     method: &str,
 ) {
-    let Some(sender) = email_sender else {
-        tracing::warn!("Email not configured, skipping payment received notification");
-        return;
-    };
-
-    let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(
-            customer_id,
-            "Could not find customer email for payment notification"
-        );
-        return;
-    };
-
-    let (subject, html) = templates::payment_received(&name, amount, method);
-    if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(customer_id, "Failed to send payment received email");
-    }
+    let repo = PgNotificationsRepository::new(pool);
+    service::notify_payment_received(&repo, email_sender, customer_id, amount, method).await;
 }
 
 /// Send an invoice-paid notification.
@@ -120,30 +72,20 @@ pub async fn notify_invoice_paid(
     total: &str,
     currency: &str,
 ) {
-    let Some(sender) = email_sender else {
-        tracing::warn!("Email not configured, skipping invoice paid notification");
-        return;
-    };
-
-    let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(
-            customer_id,
-            "Could not find customer email for invoice paid notification"
-        );
-        return;
-    };
-
-    let (subject, html) = templates::invoice_paid(&name, invoice_number, total, currency);
-    if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(
-            customer_id,
-            invoice_number,
-            "Failed to send invoice paid email"
-        );
-    }
+    let repo = PgNotificationsRepository::new(pool);
+    service::notify_invoice_paid(
+        &repo,
+        email_sender,
+        customer_id,
+        invoice_number,
+        total,
+        currency,
+    )
+    .await;
 }
 
 /// Send a subscription-renewed notification.
+#[allow(clippy::too_many_arguments)]
 pub async fn notify_subscription_renewed(
     email_sender: Option<&EmailSender>,
     pool: &PgPool,
@@ -154,28 +96,16 @@ pub async fn notify_subscription_renewed(
     currency: &str,
     next_period_end: &str,
 ) {
-    let Some(sender) = email_sender else {
-        tracing::warn!("Email not configured, skipping subscription renewed notification");
-        return;
-    };
-
-    let Some((email, name)) = customer_email(pool, customer_id).await else {
-        tracing::warn!(
-            customer_id,
-            "Could not find customer email for renewal notification"
-        );
-        return;
-    };
-
-    let (subject, html) = templates::subscription_renewed(
-        &name,
+    let repo = PgNotificationsRepository::new(pool);
+    service::notify_subscription_renewed(
+        &repo,
+        email_sender,
+        customer_id,
         plan_name,
         invoice_number,
         total,
         currency,
         next_period_end,
-    );
-    if !sender.send(&email, &subject, &html).await {
-        tracing::warn!(customer_id, "Failed to send subscription renewed email");
-    }
+    )
+    .await;
 }

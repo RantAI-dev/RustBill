@@ -1,38 +1,6 @@
-//! Password hashing with argon2 (new) + bcrypt verification (existing compat).
+//! Password hashing compatibility layer.
 
-use argon2::password_hash::SaltString;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use rand::rngs::OsRng;
-
-/// Hash a password using argon2id (OWASP recommended).
-pub fn hash_password(password: &str) -> crate::error::Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| anyhow::anyhow!("password hash failed: {e}"))?;
-    Ok(hash.to_string())
-}
-
-/// Verify a password against a hash.
-/// Supports both argon2 (new) and bcrypt (legacy) hashes for migration.
-pub fn verify_password(password: &str, hash: &str) -> crate::error::Result<bool> {
-    // Detect hash type by prefix
-    if hash.starts_with("$argon2") {
-        // Argon2 hash
-        let parsed =
-            PasswordHash::new(hash).map_err(|e| anyhow::anyhow!("invalid argon2 hash: {e}"))?;
-        Ok(Argon2::default()
-            .verify_password(password.as_bytes(), &parsed)
-            .is_ok())
-    } else if hash.starts_with("$2a$") || hash.starts_with("$2b$") || hash.starts_with("$2y$") {
-        // bcrypt hash (legacy from Node.js bcryptjs)
-        Ok(bcrypt::verify(password, hash)
-            .map_err(|e| anyhow::anyhow!("bcrypt verify failed: {e}"))?)
-    } else {
-        Ok(false)
-    }
-}
+pub use super::service::{hash_password, verify_password};
 
 #[cfg(test)]
 mod tests {
