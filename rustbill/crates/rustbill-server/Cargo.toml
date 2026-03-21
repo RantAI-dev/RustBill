@@ -35,6 +35,7 @@ uuid = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
