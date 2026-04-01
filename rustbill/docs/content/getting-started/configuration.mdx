@@ -1,0 +1,104 @@
+# Configuration
+
+RustBill uses a layered configuration system. Settings are loaded in this priority order (highest wins):
+
+1. **Environment variables** — `BILLING__<section>__<key>` format
+2. **Environment-specific TOML** — `config/{RUN_MODE}.toml`
+3. **Default config** — `config/default.toml`
+
+## Configuration File
+
+The main configuration lives in `config/default.toml`:
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 8080
+cors_origins = []
+
+[database]
+url = ""                   # Set via DATABASE_URL env var
+max_connections = 20
+min_connections = 5
+
+[auth]
+provider = "default"       # or "keycloak"
+session_expiry_days = 7
+
+[auth.keycloak]
+realm_url = ""
+client_id = ""
+client_secret = ""
+admin_role = "admin"
+
+[cron]
+enabled = true
+subscription_lifecycle = "0 0 * * * *"   # Daily at midnight
+dunning = "0 0 */6 * * *"               # Every 6 hours
+```
+
+## Environment Variables
+
+### Special Mappings
+
+These environment variables are mapped directly to config fields:
+
+| Variable | Maps to | Description |
+|---|---|---|
+| `DATABASE_URL` | `database.url` | PostgreSQL connection string |
+| `CRON_SECRET` | `auth.cron_secret` | Secret for cron endpoint authentication |
+| `RUST_LOG` | Tracing filter | Log level filter (e.g. `info,rustbill=debug`) |
+| `RUN_MODE` | Config selector | Which TOML file to load (`development` or `production`) |
+
+### Nested Overrides
+
+Any config key can be overridden with the `BILLING__` prefix:
+
+```bash
+# Override server port
+export BILLING__SERVER__PORT=3001
+
+# Override max database connections
+export BILLING__DATABASE__MAX_CONNECTIONS=50
+
+# Override session expiry
+export BILLING__AUTH__SESSION_EXPIRY_DAYS=30
+```
+
+## Production Configuration
+
+Create `config/production.toml` for production overrides:
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 3001
+
+[database]
+max_connections = 50
+min_connections = 10
+
+[auth]
+session_expiry_days = 1
+
+[cron]
+enabled = true
+```
+
+Then set `RUN_MODE=production` to activate it.
+
+## Docker
+
+When using Docker Compose, configuration is passed via environment variables in `docker-compose.yml`:
+
+```yaml
+services:
+  api:
+    environment:
+      - DATABASE_URL=postgres://billing:billing@db:5432/billing
+      - CRON_SECRET=your-secret-here
+      - RUST_LOG=info
+      - RUN_MODE=production
+```
+
+See the [Deployment Guide](/guides/deployment) for full production setup.

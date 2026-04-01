@@ -1,0 +1,89 @@
+# Products API
+
+Manage the product catalog. Products can be of type `licensed`, `saas`, or `api`.
+
+## List Products
+
+```http
+GET /api/products
+```
+
+Returns all products.
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "01JQX...",
+    "name": "Pro Plan",
+    "productType": "saas",
+    "description": "Professional tier SaaS offering",
+    "price": "49.99",
+    "status": "active",
+    "monthlyRevenue": "12500.00",
+    "activeUsers": 250,
+    "dailyActiveUsers": 180,
+    "churnRate": "2.50",
+    "createdAt": "2026-01-15T10:30:00Z",
+    "updatedAt": "2026-01-15T10:30:00Z"
+  }
+]
+```
+
+## Get Product
+
+```http
+GET /api/products/:id
+```
+
+**Response** `200 OK` — Single product object.
+
+## Create Product
+
+```http
+POST /api/products
+Content-Type: application/json
+```
+
+**Body**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Product name |
+| `productType` | string | Yes | `licensed`, `saas`, or `api` |
+| `description` | string | No | Product description |
+| `price` | string | Yes | Decimal price (e.g. `"49.99"`) |
+| `status` | string | No | Default: `active` |
+
+**Response** `201 Created`
+
+## Update Product
+
+```http
+PUT /api/products/:id
+Content-Type: application/json
+```
+
+Accepts the same fields as create. Only provided fields are updated.
+
+**Response** `200 OK`
+
+## Delete Product
+
+```http
+DELETE /api/products/:id
+```
+
+**Response** `204 No Content`
+
+## Public API
+
+Products are also available via the public v1 API:
+
+```http
+GET /api/v1/products
+Authorization: Bearer <api-key>
+```
+
+Returns products scoped to the API key's customer.

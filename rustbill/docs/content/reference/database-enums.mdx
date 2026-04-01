@@ -1,0 +1,101 @@
+# Database Enums
+
+PostgreSQL enum types used throughout the RustBill schema.
+
+## product_type
+
+Product classification.
+
+| Value | Description |
+|---|---|
+| `licensed` | Traditional licensed software with license keys |
+| `saas` | Software-as-a-Service with recurring subscriptions |
+| `api` | API product with usage-based billing |
+
+## customer_tier
+
+Customer classification tier.
+
+| Value | Description |
+|---|---|
+| `starter` | Entry-level tier |
+| `professional` | Mid-tier with expanded features |
+| `enterprise` | Full-featured enterprise tier |
+
+## subscription_status
+
+Current state of a subscription.
+
+| Value | Description |
+|---|---|
+| `active` | Currently billing normally |
+| `paused` | Temporarily suspended — no invoices generated |
+| `canceled` | Permanently ended |
+| `past_due` | Payment failed — in dunning recovery |
+| `trialing` | Within free trial period |
+
+## invoice_status
+
+Invoice lifecycle state.
+
+| Value | Description |
+|---|---|
+| `draft` | Created but not yet sent |
+| `issued` | Sent to customer, awaiting payment |
+| `paid` | Payment received |
+| `overdue` | Past due date without payment |
+| `void` | Canceled / invalidated |
+
+## payment_method
+
+Supported payment methods.
+
+| Value | Description |
+|---|---|
+| `manual` | Manual / offline payment |
+| `stripe` | Stripe payment processing |
+| `xendit` | Xendit payment processing |
+| `lemonsqueezy` | LemonSqueezy payment processing |
+| `bank_transfer` | Direct bank transfer |
+| `check` | Paper check |
+
+## billing_cycle
+
+Subscription billing frequency.
+
+| Value | Description |
+|---|---|
+| `monthly` | Billed every month |
+| `quarterly` | Billed every 3 months |
+| `yearly` | Billed every 12 months |
+
+## pricing_model
+
+How a plan's price is calculated.
+
+| Value | Description |
+|---|---|
+| `flat` | Fixed price per billing cycle |
+| `per_unit` | Price multiplied by quantity |
+| `tiered` | Price varies by usage tier |
+| `usage_based` | Price based on metered usage events |
+
+## dunning_step
+
+Payment recovery escalation stages.
+
+| Value | Description |
+|---|---|
+| `reminder` | First gentle payment reminder |
+| `warning` | Escalated warning about service impact |
+| `final_notice` | Last chance notice before suspension |
+| `suspension` | Service suspended due to non-payment |
+
+## user_role
+
+Admin user roles.
+
+| Value | Description |
+|---|---|
+| `admin` | Full administrative access |
+| `customer` | Customer-scoped access |

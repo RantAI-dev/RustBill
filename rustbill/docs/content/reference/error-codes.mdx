@@ -1,0 +1,90 @@
+# Error Codes
+
+RustBill returns structured JSON errors with consistent error codes.
+
+## Error Response Format
+
+```json
+{
+  "error": "error_code",
+  "message": "Human-readable description"
+}
+```
+
+Validation errors include field-level details:
+
+```json
+{
+  "error": "validation_error",
+  "message": "Validation failed",
+  "fields": {
+    "email": "Invalid email format"
+  }
+}
+```
+
+## Authentication Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `unauthorized` | 401 | Missing or invalid session/API key |
+| `session_expired` | 401 | Session has expired, re-login required |
+| `forbidden` | 403 | Authenticated but insufficient permissions |
+| `invalid_credentials` | 401 | Wrong email or password |
+| `invalid_api_key` | 401 | API key not found or revoked |
+| `invalid_cron_secret` | 401 | Wrong cron secret header |
+
+## Validation Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `validation_error` | 400 | Request body failed validation (see `fields`) |
+| `invalid_uuid` | 400 | Path parameter is not a valid UUID |
+| `missing_field` | 400 | Required field not provided |
+
+## Resource Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `not_found` | 404 | Resource does not exist |
+| `already_exists` | 409 | Resource with unique constraint already exists |
+| `delete_conflict` | 409 | Cannot delete — resource has dependencies |
+
+## Billing Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `subscription_not_active` | 400 | Operation requires active subscription |
+| `plan_not_found` | 404 | Pricing plan does not exist |
+| `invoice_already_paid` | 400 | Cannot modify a paid invoice |
+| `invoice_voided` | 400 | Cannot modify a voided invoice |
+| `insufficient_credit` | 400 | Customer credit balance too low |
+| `coupon_expired` | 400 | Coupon has expired |
+| `coupon_usage_exceeded` | 400 | Coupon max usage limit reached |
+| `payment_failed` | 400 | Payment processing failed |
+| `refund_exceeds_payment` | 400 | Refund amount exceeds original payment |
+
+## License Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `license_not_found` | 404 | License key does not exist |
+| `license_expired` | 400 | License has expired |
+| `license_suspended` | 400 | License is suspended |
+| `license_revoked` | 400 | License has been revoked |
+| `activation_limit_reached` | 400 | Maximum device activations exceeded |
+
+## Provider Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `provider_not_configured` | 400 | Payment provider credentials not set |
+| `provider_error` | 502 | External provider returned an error |
+| `webhook_signature_invalid` | 400 | Webhook signature verification failed |
+
+## Server Errors
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `internal_error` | 500 | Unexpected server error |
+| `database_error` | 500 | Database query failed |

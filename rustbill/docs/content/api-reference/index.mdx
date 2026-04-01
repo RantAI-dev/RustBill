@@ -1,0 +1,91 @@
+# API Reference
+
+RustBill exposes two API surfaces:
+
+- **Admin API** (`/api/*`) — Session-authenticated endpoints for dashboard operations
+- **Public API** (`/api/v1/*`) — API key-authenticated endpoints for integrations
+
+## Base URL
+
+```
+http://localhost:3001
+```
+
+## Authentication
+
+| API Surface | Method | Header/Cookie |
+|---|---|---|
+| Admin API | Session cookie | `Cookie: session=<token>` |
+| Public API | Bearer token | `Authorization: Bearer <api-key>` |
+| Webhooks | Signature verification | Provider-specific headers |
+| Cron | Secret header | `X-Cron-Secret: <secret>` |
+
+## Common Response Format
+
+### Success
+
+```json
+{
+  "id": "01JQXYZ...",
+  "name": "Example",
+  "createdAt": "2026-01-15T10:30:00Z",
+  "updatedAt": "2026-01-15T10:30:00Z"
+}
+```
+
+List endpoints return arrays directly:
+
+```json
+[
+  { "id": "01JQXYZ...", "name": "Example 1" },
+  { "id": "01JQABC...", "name": "Example 2" }
+]
+```
+
+### Errors
+
+```json
+{
+  "error": "not_found",
+  "message": "Product not found"
+}
+```
+
+Validation errors include field-level details:
+
+```json
+{
+  "error": "validation_error",
+  "message": "Validation failed",
+  "fields": {
+    "email": "Invalid email format",
+    "name": "Name is required"
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Code | Meaning |
+|---|---|
+| `200` | Success |
+| `201` | Created |
+| `204` | Deleted (no content) |
+| `400` | Bad request / validation error |
+| `401` | Unauthorized (missing or invalid auth) |
+| `403` | Forbidden (insufficient permissions) |
+| `404` | Resource not found |
+| `409` | Conflict (duplicate resource) |
+| `500` | Internal server error |
+
+## Endpoint Groups
+
+| Group | Base Path | Auth | Description |
+|---|---|---|---|
+| [Products](/api-reference/products) | `/api/products` | Session | Product catalog CRUD |
+| [Customers](/api-reference/customers) | `/api/customers` | Session | Customer management |
+| [Subscriptions](/api-reference/subscriptions) | `/api/billing/subscriptions` | Session | Subscription lifecycle |
+| [Invoices](/api-reference/invoices) | `/api/billing/invoices` | Session | Invoice generation & management |
+| [Licenses](/api-reference/licenses) | `/api/licenses` | Session / Public | License key management |
+| [Payments](/api-reference/payments) | `/api/billing/payments` | Session | Payment recording & processing |
+| [Webhooks](/api-reference/webhooks) | `/api/billing/webhooks` | Signature | Inbound & outbound webhooks |

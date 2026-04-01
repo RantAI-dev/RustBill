@@ -1,0 +1,123 @@
+# Licenses API
+
+Manage software license keys with activation tracking, feature support, and public verification.
+
+## List Licenses
+
+```http
+GET /api/licenses
+```
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "01JQX...",
+    "licenseKey": "RUSTBILL-XXXX-XXXX-XXXX",
+    "customerId": "01JQA...",
+    "productId": "01JQB...",
+    "status": "active",
+    "maxActivations": 5,
+    "currentActivations": 2,
+    "features": {
+      "api_access": true,
+      "premium_support": true,
+      "max_users": 50
+    },
+    "expiresAt": "2027-01-15T00:00:00Z",
+    "createdAt": "2026-01-15T10:30:00Z"
+  }
+]
+```
+
+## Create License
+
+```http
+POST /api/licenses
+Content-Type: application/json
+```
+
+**Body**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `customerId` | UUID | Yes | License owner |
+| `productId` | UUID | Yes | Licensed product |
+| `maxActivations` | integer | No | Device limit (default: unlimited) |
+| `features` | object | No | Feature flags / limits |
+| `expiresAt` | string | No | ISO 8601 expiration date |
+
+A unique license key is auto-generated.
+
+## Update License
+
+```http
+PUT /api/licenses/:key
+Content-Type: application/json
+```
+
+Note: licenses are addressed by their key string, not UUID.
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `active`, `suspended`, `revoked` |
+| `maxActivations` | integer | Update device limit |
+| `features` | object | Update feature flags |
+| `expiresAt` | string | Update expiration |
+
+## Delete License
+
+```http
+DELETE /api/licenses/:key
+```
+
+## Public Verification (No Auth Required)
+
+These endpoints are public — designed to be called from your software's license check:
+
+### Verify License
+
+```http
+POST /api/licenses/verify
+Content-Type: application/json
+
+{
+  "licenseKey": "RUSTBILL-XXXX-XXXX-XXXX"
+}
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "valid": true,
+  "status": "active",
+  "features": { "api_access": true },
+  "expiresAt": "2027-01-15T00:00:00Z"
+}
+```
+
+### Validate and Activate
+
+```http
+POST /api/licenses/validate
+Content-Type: application/json
+
+{
+  "licenseKey": "RUSTBILL-XXXX-XXXX-XXXX",
+  "deviceId": "device-fingerprint-hash",
+  "deviceName": "John's Laptop"
+}
+```
+
+Validates the license and registers a device activation. Returns an error if the activation limit is reached.
+
+## License Statuses
+
+| Status | Description |
+|---|---|
+| `active` | Valid and usable |
+| `expired` | Past expiration date |
+| `suspended` | Temporarily disabled |
+| `revoked` | Permanently disabled |

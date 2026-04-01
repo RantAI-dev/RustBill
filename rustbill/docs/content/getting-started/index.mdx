@@ -1,0 +1,54 @@
+# Installation
+
+## Prerequisites
+
+- **Rust** 1.82 or later (`rustup` recommended)
+- **PostgreSQL** 17 (or use Docker Compose)
+- **Docker & Docker Compose** (optional, for local database)
+
+## Clone the Repository
+
+```bash
+git clone https://github.com/RantAI-dev/RustBill.git
+cd RustBill/rustbill
+```
+
+## Start the Database
+
+The easiest way to get PostgreSQL running is via Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+This starts PostgreSQL 17 on port **5444** with a persistent volume.
+
+## Run Migrations
+
+Migrations are applied automatically on startup, but you can also run them manually:
+
+```bash
+export DATABASE_URL="postgres://billing:billing@localhost:5444/billing"
+cargo sqlx migrate run
+```
+
+## Build and Run
+
+```bash
+export DATABASE_URL="postgres://billing:billing@localhost:5444/billing"
+cargo run --release
+```
+
+The server starts on `http://localhost:3001` by default.
+
+## Verify
+
+```bash
+curl http://localhost:3001/health
+# => {"status":"ok"}
+```
+
+## Next Steps
+
+- [Quick Start](/getting-started/quick-start) — Make your first API calls
+- [Configuration](/getting-started/configuration) — Customize server settings, auth, and payment providers

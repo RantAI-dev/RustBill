@@ -4,6 +4,9 @@ members = [
     "crates/rustbill-core",
     "crates/rustbill-server",
 ]
+exclude = [
+    "installer",
+]
 
 [workspace.package]
 version = "0.1.0"

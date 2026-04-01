@@ -1,0 +1,118 @@
+# Payment Providers
+
+RustBill integrates with multiple payment providers via feature-gated modules. Each provider handles checkout sessions, payment verification, and webhook processing.
+
+## Supported Providers
+
+| Provider | Feature Flag | Checkout | Webhooks | Recurring |
+|---|---|---|---|---|
+| Stripe | `stripe` | Yes | Yes | Yes |
+| Xendit | `xendit` (default) | Yes | Yes | Yes |
+| LemonSqueezy | `lemonsqueezy` (default) | Yes | Yes | Yes |
+
+## Stripe Setup
+
+### 1. Enable the Feature
+
+```toml
+# Cargo.toml
+[features]
+default = ["stripe", "xendit", "lemonsqueezy"]
+```
+
+### 2. Configure Credentials
+
+Set your Stripe keys via environment variables or the settings API:
+
+```bash
+export STRIPE_SECRET_KEY=sk_live_...
+export STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+Or configure via the admin settings API:
+
+```http
+PUT /api/settings/providers/stripe
+Content-Type: application/json
+
+{
+  "secretKey": "sk_live_...",
+  "webhookSecret": "whsec_...",
+  "enabled": true
+}
+```
+
+### 3. Set Up Webhook Endpoint
+
+In the Stripe Dashboard, create a webhook endpoint pointing to:
+
+```
+https://your-domain.com/api/billing/webhooks/stripe
+```
+
+Subscribe to these events:
+- `checkout.session.completed`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `customer.subscription.updated`
+
+## Xendit Setup
+
+### 1. Configure Credentials
+
+```bash
+export XENDIT_SECRET_KEY=xnd_...
+export XENDIT_WEBHOOK_TOKEN=your-callback-token
+```
+
+### 2. Set Up Callback URL
+
+In the Xendit Dashboard, set your callback URL:
+
+```
+https://your-domain.com/api/billing/webhooks/xendit
+```
+
+## LemonSqueezy Setup
+
+### 1. Configure Credentials
+
+```bash
+export LEMONSQUEEZY_API_KEY=your-api-key
+export LEMONSQUEEZY_WEBHOOK_SECRET=your-signing-secret
+export LEMONSQUEEZY_STORE_ID=your-store-id
+```
+
+### 2. Set Up Webhook
+
+In the LemonSqueezy Dashboard, create a webhook pointing to:
+
+```
+https://your-domain.com/api/billing/webhooks/lemonsqueezy
+```
+
+Subscribe to:
+- `order_created`
+- `subscription_created`
+- `subscription_updated`
+- `subscription_payment_success`
+
+## Manual Payments
+
+For bank transfers, checks, or offline payments, use the manual payment method:
+
+```http
+POST /api/billing/payments
+Content-Type: application/json
+
+{
+  "invoiceId": "01JQX...",
+  "amount": "54.99",
+  "paymentMethod": "manual",
+  "notes": "Bank transfer ref: TRF-12345"
+}
+```
+
+## Provider Selection
+
+When a customer has a default payment method, the subscription lifecycle engine automatically selects the appropriate provider for auto-charge. You can also specify the provider explicitly during checkout.

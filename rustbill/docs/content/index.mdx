@@ -1,0 +1,120 @@
+{<div className="hero">
+  <img src="/rustbill-logo.png" alt="RustBill" className="hero-logo" />
+  <h1>RustBill</h1>
+  <div className="subtitle">
+    Open-source billing, subscription, and license management API built with Rust for speed and reliability.
+  </div>
+  <div className="tech-stack">
+    <span className="tech-pill">Rust</span>
+    <span className="tech-pill">Axum</span>
+    <span className="tech-pill">PostgreSQL</span>
+    <span className="tech-pill">SQLx</span>
+    <span className="tech-pill">Stripe</span>
+    <span className="tech-pill">Xendit</span>
+    <span className="tech-pill">LemonSqueezy</span>
+  </div>
+</div>}
+
+{<hr className="divider" />}
+
+{<div className="quick-links">
+  <a href="/getting-started" className="quick-link">
+    <span className="icon">&#9889;</span>
+    <div>
+      <div className="label">Getting Started</div>
+      <div className="desc">Install, configure, first API call</div>
+    </div>
+  </a>
+  <a href="/architecture" className="quick-link">
+    <span className="icon">&#128736;</span>
+    <div>
+      <div className="label">Architecture</div>
+      <div className="desc">Crates, schema, auth design</div>
+    </div>
+  </a>
+  <a href="/api-reference" className="quick-link">
+    <span className="icon">&#128214;</span>
+    <div>
+      <div className="label">API Reference</div>
+      <div className="desc">Every endpoint documented</div>
+    </div>
+  </a>
+  <a href="/guides" className="quick-link">
+    <span className="icon">&#128218;</span>
+    <div>
+      <div className="label">Guides</div>
+      <div className="desc">Payment, webhooks, deployment</div>
+    </div>
+  </a>
+</div>}
+
+{<hr className="divider" />}
+
+## Features
+
+{<div className="feature-grid">
+  <div className="feature-card">
+    <div className="feature-title">Subscription Management</div>
+    <div className="feature-desc">Monthly, quarterly, and yearly billing cycles with plan changes, proration, and automated lifecycle management.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Multi-Provider Payments</div>
+    <div className="feature-desc">Stripe, Xendit, and LemonSqueezy integrations with unified checkout sessions and webhook handling.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Invoice Generation</div>
+    <div className="feature-desc">Auto-generated invoices with PDF export, configurable numbering sequences, and full status tracking.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">License Management</div>
+    <div className="feature-desc">Key generation, per-device activation tracking, feature-based licensing, and public verification endpoints.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Usage-Based Billing</div>
+    <div className="feature-desc">Event ingestion, tiered pricing models, per-unit metering, and usage analytics.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Dunning and Recovery</div>
+    <div className="feature-desc">Automated multi-step payment failure recovery: reminder, warning, final notice, and suspension.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Credits and Coupons</div>
+    <div className="feature-desc">Store credit balances, percentage and fixed-amount discount codes, and credit note generation.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Webhooks</div>
+    <div className="feature-desc">Inbound provider webhooks with signature verification, plus outbound event dispatch to your systems.</div>
+  </div>
+  <div className="feature-card">
+    <div className="feature-title">Analytics</div>
+    <div className="feature-desc">Sales ledger, revenue metrics, customer health scores, and partitioned event tables for fast queries.</div>
+  </div>
+</div>}
+
+{<hr className="divider" />}
+
+## Tech Stack
+
+| Component | Technology |
+|---|---|
+| **Language** | Rust (Edition 2021, 1.82+) |
+| **Web Framework** | Axum 0.8 + Tower middleware |
+| **Database** | PostgreSQL 17 via SQLx (compile-time checked queries) |
+| **Auth** | Session cookies, Bearer API keys, Keycloak SSO |
+| **Payments** | Stripe, Xendit, LemonSqueezy (feature-gated) |
+| **Email** | Lettre (SMTP) |
+| **PDF** | printpdf |
+| **Scheduling** | tokio-cron-scheduler |
+| **Testing** | axum-test with 27 integration test files |
+| **Deployment** | Docker multi-stage build, systemd, reverse proxy |
+
+## Architecture
+
+RustBill is organized as a Cargo workspace with two crates:
+
+- **`rustbill-core`** -- Domain logic: billing lifecycle, subscriptions, invoicing, payments, licenses, customers, products, dunning, notifications, analytics
+- **`rustbill-server`** -- HTTP layer: Axum route handlers organized as vertical slices, middleware, auth extractors
+
+Payment providers are behind feature flags so you only compile what you need. All monetary arithmetic uses `rust_decimal`. Database queries are verified at compile time via SQLx.
+
+[Learn more about the architecture](/architecture)

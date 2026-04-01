@@ -1,0 +1,138 @@
+# Deployment
+
+## Docker (Recommended)
+
+RustBill ships with a multi-stage Dockerfile optimized for small image size and fast builds.
+
+### Production Docker Compose
+
+```yaml
+version: "3.8"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: billing
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  api:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgres://billing:${DB_PASSWORD}@db:5432/billing
+      CRON_SECRET: ${CRON_SECRET}
+      RUST_LOG: info
+      RUN_MODE: production
+    depends_on:
+      - db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
+```
+
+### Build and Deploy
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+## Binary Deployment
+
+Build a static release binary:
+
+```bash
+cargo build --release
+```
+
+The binary is at `target/release/rustbill-server`. It requires:
+
+- PostgreSQL 17 accessible via `DATABASE_URL`
+- Config files in `config/` relative to the working directory
+- Write access for PDF generation (if enabled)
+
+### Systemd Service
+
+```ini
+[Unit]
+Description=RustBill Billing API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=billing
+WorkingDirectory=/opt/rustbill
+ExecStart=/opt/rustbill/rustbill-server
+Environment=DATABASE_URL=postgres://billing:password@localhost:5432/billing
+Environment=CRON_SECRET=your-secret
+Environment=RUST_LOG=info
+Environment=RUN_MODE=production
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Health Check
+
+The `/health` endpoint returns service status:
+
+```bash
+curl http://localhost:3001/health
+# {"status":"ok"}
+```
+
+Use this for load balancer health checks, container orchestration, and monitoring.
+
+## Database Migrations
+
+Migrations run automatically on server startup. For manual control:
+
+```bash
+export DATABASE_URL="postgres://..."
+cargo sqlx migrate run
+```
+
+## Security Checklist
+
+- [ ] Set strong `CRON_SECRET` for cron endpoints
+- [ ] Configure CORS origins for production (`server.cors_origins`)
+- [ ] Use HTTPS (via reverse proxy like Nginx or Caddy)
+- [ ] Set `auth.session_expiry_days` to an appropriate value
+- [ ] Rotate API keys periodically
+- [ ] Configure webhook signature secrets per provider
+- [ ] Set `database.max_connections` based on expected load
+- [ ] Enable structured logging (`RUST_LOG=info,rustbill=debug`)
+
+## Reverse Proxy (Nginx)
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name billing-api.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/billing-api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/billing-api.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```

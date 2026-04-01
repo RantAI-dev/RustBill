@@ -1,0 +1,74 @@
+# Environment Variables
+
+Complete reference of all environment variables used by RustBill.
+
+## Required
+
+| Variable | Description | Example |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | `postgres://user:pass@localhost:5432/billing` |
+
+## Server
+
+| Variable | Description | Default |
+|---|---|---|
+| `BILLING__SERVER__HOST` | Bind address | `0.0.0.0` |
+| `BILLING__SERVER__PORT` | Listen port | `8080` |
+| `RUN_MODE` | Config profile (`development` / `production`) | `development` |
+| `RUST_LOG` | Log filter directive | `info` |
+
+## Authentication
+
+| Variable | Description | Default |
+|---|---|---|
+| `CRON_SECRET` | Secret for cron endpoint auth | — |
+| `BILLING__AUTH__PROVIDER` | Auth provider (`default` / `keycloak`) | `default` |
+| `BILLING__AUTH__SESSION_EXPIRY_DAYS` | Session lifetime in days | `7` |
+
+## Keycloak (Optional)
+
+| Variable | Description |
+|---|---|
+| `BILLING__AUTH__KEYCLOAK__REALM_URL` | Keycloak realm URL |
+| `BILLING__AUTH__KEYCLOAK__CLIENT_ID` | OAuth client ID |
+| `BILLING__AUTH__KEYCLOAK__CLIENT_SECRET` | OAuth client secret |
+| `BILLING__AUTH__KEYCLOAK__ADMIN_ROLE` | Role name for admin access |
+
+## Database
+
+| Variable | Description | Default |
+|---|---|---|
+| `BILLING__DATABASE__MAX_CONNECTIONS` | Connection pool max size | `20` |
+| `BILLING__DATABASE__MIN_CONNECTIONS` | Connection pool min size | `5` |
+
+## Cron
+
+| Variable | Description | Default |
+|---|---|---|
+| `BILLING__CRON__ENABLED` | Enable cron scheduler | `true` |
+| `BILLING__CRON__SUBSCRIPTION_LIFECYCLE` | Lifecycle cron expression | `0 0 * * * *` |
+| `BILLING__CRON__DUNNING` | Dunning cron expression | `0 0 */6 * * *` |
+
+## Payment Providers
+
+### Stripe
+
+| Variable | Description |
+|---|---|
+| `STRIPE_SECRET_KEY` | Stripe API secret key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+
+### Xendit
+
+| Variable | Description |
+|---|---|
+| `XENDIT_SECRET_KEY` | Xendit API secret key |
+| `XENDIT_WEBHOOK_TOKEN` | Xendit callback verification token |
+
+### LemonSqueezy
+
+| Variable | Description |
+|---|---|
+| `LEMONSQUEEZY_API_KEY` | LemonSqueezy API key |
+| `LEMONSQUEEZY_WEBHOOK_SECRET` | LemonSqueezy webhook signing secret |
+| `LEMONSQUEEZY_STORE_ID` | Your LemonSqueezy store ID |

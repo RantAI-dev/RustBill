@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Gate: run existing CI checks ───────────────────────────
+  ci-gate:
+    name: CI Gate
+    uses: ./.github/workflows/ci.yml
+
+  # ── Build: Rust backend (static musl binary) ──────────────
+  build-backend:
+    name: Build Backend (musl)
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustbill
+          key: backend-musl
+
+      - name: Build release binary
+        working-directory: rustbill
+        run: cargo build --release --target x86_64-unknown-linux-musl --bin rustbill-server
+        env:
+          SQLX_OFFLINE: true
+
+      - name: Verify static binary
+        run: |
+          file rustbill/target/x86_64-unknown-linux-musl/release/rustbill-server
+          cp rustbill/target/x86_64-unknown-linux-musl/release/rustbill-server rustbill-server-x86_64-linux-musl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustbill-server-x86_64-linux-musl
+          path: rustbill-server-x86_64-linux-musl
+
+  # ── Build: Next.js frontend tarball ────────────────────────
+  build-frontend:
+    name: Build Frontend Tarball
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Package standalone output
+        run: |
+          tar czf rustbill-frontend-standalone.tar.gz \
+            -C .next/standalone . \
+            --transform='s,^\./,,' \
+            || tar czf rustbill-frontend-standalone.tar.gz .next/standalone/ .next/static/ public/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustbill-frontend-standalone
+          path: rustbill-frontend-standalone.tar.gz
+
+  # ── Build: Installer TUI binary (static musl) ─────────────
+  build-installer:
+    name: Build Installer (musl)
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustbill/installer
+          key: installer-musl
+
+      - name: Build installer
+        working-directory: rustbill/installer
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Prepare artifact
+        run: |
+          cp rustbill/installer/target/x86_64-unknown-linux-musl/release/rustbill-installer \
+             rustbill-installer-x86_64-linux-musl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustbill-installer-x86_64-linux-musl
+          path: rustbill-installer-x86_64-linux-musl
+
+  # ── Create GitHub Release ──────────────────────────────────
+  create-release:
+    name: Create Release
+    needs: [build-backend, build-frontend, build-installer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp artifacts/rustbill-server-x86_64-linux-musl/rustbill-server-x86_64-linux-musl release/
+          cp artifacts/rustbill-frontend-standalone/rustbill-frontend-standalone.tar.gz release/
+          cp artifacts/rustbill-installer-x86_64-linux-musl/rustbill-installer-x86_64-linux-musl release/
+          cp scripts/install.sh release/
+
+          chmod +x release/rustbill-server-x86_64-linux-musl
+          chmod +x release/rustbill-installer-x86_64-linux-musl
+
+          cd release && sha256sum * > checksums.txt
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check if pre-release
+        id: prerelease
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [[ "$TAG" == *"-alpha"* ]] || [[ "$TAG" == *"-beta"* ]] || [[ "$TAG" == *"-rc"* ]] || [[ "$TAG" == v0.* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PRERELEASE="${{ steps.prerelease.outputs.prerelease }}"
+
+          NOTES="## RustBill ${TAG}
+
+          ### Quick Install
+
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sudo bash
+          \`\`\`
+
+          ### Manual Install
+
+          \`\`\`bash
+          curl -LO https://github.com/${{ github.repository }}/releases/download/${TAG}/rustbill-installer-x86_64-linux-musl
+          chmod +x rustbill-installer-x86_64-linux-musl
+          sudo ./rustbill-installer-x86_64-linux-musl install
+          \`\`\`
+
+          ### Non-Interactive
+
+          \`\`\`bash
+          sudo ./rustbill-installer-x86_64-linux-musl install --non-interactive --mode full
+          \`\`\`
+
+          ### Assets
+          - \`rustbill-server-x86_64-linux-musl\` — Rust API server (static binary)
+          - \`rustbill-frontend-standalone.tar.gz\` — Next.js frontend (standalone build)
+          - \`rustbill-installer-x86_64-linux-musl\` — TUI installer (static binary)
+          - \`install.sh\` — Bootstrap script
+          - \`checksums.txt\` — SHA256 checksums
+          "
+
+          FLAGS=""
+          if [ "$PRERELEASE" = "true" ]; then
+            FLAGS="--prerelease"
+          fi
+
+          gh release create "${TAG}" \
+            --title "RustBill ${TAG}" \
+            --notes "${NOTES}" \
+            ${FLAGS} \
+            release/*

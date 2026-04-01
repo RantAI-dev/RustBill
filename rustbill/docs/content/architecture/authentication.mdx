@@ -1,0 +1,105 @@
+# Authentication
+
+RustBill supports multiple authentication methods depending on the API surface.
+
+## Admin API (Session-Based)
+
+The main admin API (`/api/*`) uses session-based authentication with HTTP-only cookies.
+
+### Login
+
+```bash
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "your-password"
+}
+```
+
+On success, the response sets a `session` cookie with a 7-day expiry (configurable via `auth.session_expiry_days`).
+
+### Session Validation
+
+Every request to admin endpoints is validated via the `AdminUser` Axum extractor, which:
+
+1. Reads the `session` cookie
+2. Looks up the session in the database
+3. Verifies the session hasn't expired
+4. Confirms the user has the `admin` role
+
+### Logout
+
+```bash
+POST /api/auth/logout
+```
+
+Invalidates the session server-side.
+
+## Public API (API Key)
+
+The v1 API (`/api/v1/*`) uses Bearer token authentication with API keys.
+
+### Creating an API Key
+
+```bash
+POST /api/api-keys
+Cookie: session=...
+
+{
+  "name": "My Integration",
+  "customerId": "<customer-uuid>"
+}
+```
+
+Returns a key that should be stored securely — it's only shown once.
+
+### Using an API Key
+
+```bash
+GET /api/v1/products
+Authorization: Bearer <api-key>
+```
+
+API keys are stored hashed in the database and scoped to a specific customer.
+
+## Keycloak SSO
+
+RustBill can optionally use Keycloak for authentication:
+
+```toml
+[auth]
+provider = "keycloak"
+
+[auth.keycloak]
+realm_url = "https://keycloak.example.com/realms/billing"
+client_id = "rustbill"
+client_secret = "your-client-secret"
+admin_role = "admin"
+```
+
+When enabled, the login endpoint validates credentials against Keycloak instead of the local user table.
+
+## Webhook Authentication
+
+Inbound webhooks from payment providers use signature verification:
+
+- **Stripe** — `Stripe-Signature` header with HMAC-SHA256
+- **Xendit** — `x-callback-token` header verification
+- **LemonSqueezy** — `X-Signature` header with HMAC-SHA256
+
+## Cron Endpoint Authentication
+
+Cron endpoints (`/api/billing/cron/*`) require a `CRON_SECRET` header matching the configured secret:
+
+```bash
+POST /api/billing/cron/lifecycle
+X-Cron-Secret: your-cron-secret
+```
+
+## Password Hashing
+
+- New passwords are hashed with **Argon2id**
+- Legacy **bcrypt** hashes are supported for backward compatibility
+- Passwords are automatically rehashed to Argon2id on next login

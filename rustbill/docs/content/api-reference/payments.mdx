@@ -1,0 +1,123 @@
+# Payments API
+
+Record payments, manage payment methods, process refunds, and handle checkout sessions.
+
+## Record Payment
+
+```http
+POST /api/billing/payments
+Content-Type: application/json
+```
+
+**Body**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `invoiceId` | UUID | Yes | Invoice being paid |
+| `amount` | string | Yes | Payment amount |
+| `paymentMethod` | string | Yes | `stripe`, `xendit`, `lemonsqueezy`, `bank_transfer`, `manual` |
+| `providerReference` | string | No | External payment ID |
+
+**Response** `201 Created`
+
+## List Payments
+
+```http
+GET /api/billing/payments
+```
+
+## Create Checkout Session
+
+Start a hosted checkout flow with a payment provider:
+
+### Stripe
+
+```http
+POST /api/billing/checkout/stripe
+Content-Type: application/json
+
+{
+  "invoiceId": "01JQX...",
+  "successUrl": "https://app.example.com/success",
+  "cancelUrl": "https://app.example.com/cancel"
+}
+```
+
+Returns a Stripe Checkout Session URL.
+
+### Xendit
+
+```http
+POST /api/billing/checkout/xendit
+Content-Type: application/json
+
+{
+  "invoiceId": "01JQX...",
+  "successUrl": "https://app.example.com/success"
+}
+```
+
+Returns a Xendit invoice URL.
+
+## Refunds
+
+```http
+POST /api/billing/refunds
+Content-Type: application/json
+
+{
+  "paymentId": "01JQX...",
+  "amount": "25.00",
+  "reason": "Partial refund for unused period"
+}
+```
+
+## Payment Methods
+
+### List Customer Payment Methods
+
+```http
+GET /api/billing/payment-methods?customerId=01JQX...
+```
+
+### Add Payment Method
+
+```http
+POST /api/billing/payment-methods
+Content-Type: application/json
+
+{
+  "customerId": "01JQX...",
+  "type": "stripe",
+  "providerMethodId": "pm_xxx",
+  "isDefault": true
+}
+```
+
+## Credits
+
+### Add Store Credit
+
+```http
+POST /api/billing/credits
+Content-Type: application/json
+
+{
+  "customerId": "01JQX...",
+  "amount": "50.00",
+  "description": "Goodwill credit"
+}
+```
+
+### Issue Credit Note
+
+```http
+POST /api/billing/credit-notes
+Content-Type: application/json
+
+{
+  "invoiceId": "01JQX...",
+  "amount": "25.00",
+  "reason": "Service credit"
+}
+```

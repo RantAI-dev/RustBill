@@ -1,0 +1,122 @@
+# Webhook Integration
+
+This guide covers how to receive billing events from RustBill in your application.
+
+## Registering a Webhook Endpoint
+
+```http
+POST /api/billing/webhooks/endpoints
+Content-Type: application/json
+
+{
+  "url": "https://your-app.com/webhooks/billing",
+  "events": ["invoice.paid", "subscription.canceled", "payment.failed"],
+  "secret": "whsec_your-signing-secret-here"
+}
+```
+
+You'll receive a webhook endpoint ID in the response. Store this for management.
+
+## Verifying Signatures
+
+Every outbound webhook includes an `X-Signature` header containing an HMAC-SHA256 signature of the request body, signed with your endpoint's secret.
+
+### Verification Example (Node.js)
+
+```javascript
+const crypto = require('crypto')
+
+function verifyWebhook(body, signature, secret) {
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(body)
+    .digest('hex')
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  )
+}
+```
+
+### Verification Example (Python)
+
+```python
+import hmac
+import hashlib
+
+def verify_webhook(body: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(
+        secret.encode(), body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected)
+```
+
+## Event Payload Structure
+
+```json
+{
+  "id": "evt_01JQX...",
+  "type": "invoice.paid",
+  "createdAt": "2026-03-15T10:30:00Z",
+  "data": {
+    "invoiceId": "01JQX...",
+    "customerId": "01JQA...",
+    "amount": "54.99",
+    "currency": "USD"
+  }
+}
+```
+
+## Handling Events
+
+Your webhook handler should:
+
+1. **Verify the signature** before processing
+2. **Return `200 OK`** quickly (within 5 seconds)
+3. **Process asynchronously** if the operation is slow
+4. **Be idempotent** — the same event may be delivered more than once
+
+### Common Event Handling Patterns
+
+| Event | Typical Action |
+|---|---|
+| `invoice.paid` | Activate service, send receipt email |
+| `subscription.canceled` | Revoke access, send farewell email |
+| `payment.failed` | Notify customer, show upgrade prompt |
+| `license.expired` | Disable license features |
+| `dunning.started` | Send payment retry notification |
+
+## Managing Endpoints
+
+### List Endpoints
+
+```http
+GET /api/billing/webhooks/endpoints
+```
+
+### Update Events
+
+```http
+PUT /api/billing/webhooks/endpoints/:id
+Content-Type: application/json
+
+{
+  "events": ["invoice.paid", "invoice.overdue", "subscription.canceled"]
+}
+```
+
+### Delete Endpoint
+
+```http
+DELETE /api/billing/webhooks/endpoints/:id
+```
+
+## Testing
+
+During development, use a tool like [ngrok](https://ngrok.com) to expose your local server:
+
+```bash
+ngrok http 8080
+```
+
+Then register the ngrok URL as your webhook endpoint.

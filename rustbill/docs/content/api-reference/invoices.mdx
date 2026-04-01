@@ -1,0 +1,99 @@
+# Invoices API
+
+Generate, manage, and export invoices with PDF support and configurable numbering.
+
+## List Invoices
+
+```http
+GET /api/billing/invoices
+```
+
+**Query Parameters**
+
+| Param | Type | Description |
+|---|---|---|
+| `status` | string | Filter by status |
+| `customerId` | UUID | Filter by customer |
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "01JQX...",
+    "customerId": "01JQA...",
+    "subscriptionId": "01JQB...",
+    "invoiceNumber": "INV-2026-0001",
+    "status": "issued",
+    "subtotal": "49.99",
+    "taxAmount": "5.00",
+    "total": "54.99",
+    "currency": "USD",
+    "dueDate": "2026-04-15T00:00:00Z",
+    "paidAt": null,
+    "lineItems": [
+      {
+        "description": "Pro Plan - Monthly",
+        "quantity": 1,
+        "unitPrice": "49.99",
+        "amount": "49.99"
+      }
+    ],
+    "pdfUrl": "/invoices/INV-2026-0001.pdf",
+    "createdAt": "2026-03-15T10:30:00Z"
+  }
+]
+```
+
+## Create Invoice
+
+```http
+POST /api/billing/invoices
+Content-Type: application/json
+```
+
+**Body**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `customerId` | UUID | Yes | Customer to invoice |
+| `subscriptionId` | UUID | No | Associated subscription |
+| `lineItems` | array | Yes | Invoice line items |
+| `lineItems[].description` | string | Yes | Line item description |
+| `lineItems[].quantity` | integer | Yes | Quantity |
+| `lineItems[].unitPrice` | string | Yes | Price per unit |
+| `dueDate` | string | No | ISO 8601 date |
+| `currency` | string | No | Default: `USD` |
+
+## Update Invoice Status
+
+```http
+PUT /api/billing/invoices/:id
+Content-Type: application/json
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | `draft`, `issued`, `paid`, `void` |
+
+## Generate PDF
+
+```http
+GET /api/billing/invoices/:id/pdf
+```
+
+Returns the invoice as a PDF document. PDFs are generated using `printpdf` and cached.
+
+## Invoice Statuses
+
+| Status | Description |
+|---|---|
+| `draft` | Not yet sent to customer |
+| `issued` | Sent and awaiting payment |
+| `paid` | Payment received |
+| `overdue` | Past due date without payment |
+| `void` | Canceled / voided |
+
+## Invoice Numbering
+
+Invoice numbers follow the pattern `INV-{YEAR}-{SEQUENCE}` and are auto-incremented. The sequence resets yearly.

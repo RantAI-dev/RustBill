@@ -1,0 +1,76 @@
+name: Installer CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rustbill/installer/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rustbill/installer/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustbill/installer
+
+      - name: Check formatting
+        working-directory: rustbill/installer
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        working-directory: rustbill/installer
+        run: cargo clippy --all-targets -- -D warnings
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustbill/installer
+
+      - name: Build release
+        working-directory: rustbill/installer
+        run: cargo build --release
+
+      - name: Verify binary
+        working-directory: rustbill/installer
+        run: |
+          ./target/release/rustbill-installer --help
+          ./target/release/rustbill-installer --version
+          ./target/release/rustbill-installer install --help
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rustbill/installer
+
+      - name: Run tests
+        working-directory: rustbill/installer
+        run: cargo test
