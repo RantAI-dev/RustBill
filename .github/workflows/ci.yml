@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   push:
     branches: [main, master]
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always

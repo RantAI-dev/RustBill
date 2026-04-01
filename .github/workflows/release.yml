@@ -25,6 +25,20 @@ jobs:
     name: Build Backend (musl)
     needs: ci-gate
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: rantai_billing
+          POSTGRES_PASSWORD: rantai_billing
+          POSTGRES_DB: rantai_billing_test
+        ports:
+          - 5444:5432
+        options: >-
+          --health-cmd "pg_isready -U rantai_billing -d rantai_billing_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +58,7 @@ jobs:
         working-directory: rustbill
         run: cargo build --release --target x86_64-unknown-linux-musl --bin rustbill-server
         env:
-          SQLX_OFFLINE: true
+          DATABASE_URL: postgresql://rantai_billing:rantai_billing@localhost:5444/rantai_billing_test
 
       - name: Verify static binary
         run: |
