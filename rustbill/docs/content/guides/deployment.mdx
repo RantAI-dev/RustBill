@@ -1,10 +1,89 @@
 # Deployment
 
-## Docker (Recommended)
+## TUI Installer (Recommended)
 
-RustBill ships with a multi-stage Dockerfile optimized for small image size and fast builds.
+The fastest path to production. Downloads pre-built static binaries from GitHub Releases:
 
-### Production Docker Compose
+```bash
+curl -fsSL https://github.com/RantAI-dev/RustBill/releases/latest/download/install.sh | sudo bash
+```
+
+This launches an interactive TUI that handles PostgreSQL, backend, frontend, configuration, and systemd services. See the [Installation guide](/getting-started) for details.
+
+For scripted deployments:
+
+```bash
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/rustbill-installer-x86_64-linux-musl
+chmod +x rustbill-installer-x86_64-linux-musl
+sudo ./rustbill-installer-x86_64-linux-musl install \
+  --non-interactive \
+  --mode full \
+  --db-password "$(openssl rand -hex 16)"
+```
+
+## Manual Binary Deployment
+
+Download individual release artifacts if you prefer to manage services yourself.
+
+### Backend
+
+```bash
+# Download the static binary
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/rustbill-server-x86_64-linux-musl
+sudo mv rustbill-server-x86_64-linux-musl /usr/local/bin/rustbill-server
+sudo chmod +x /usr/local/bin/rustbill-server
+
+# Create config directory
+sudo mkdir -p /opt/rustbill/config
+
+# Write production config
+sudo tee /opt/rustbill/config/production.toml > /dev/null <<EOF
+[server]
+port = 3001
+
+[cron]
+enabled = true
+EOF
+
+# Set environment
+export DATABASE_URL="postgresql://rantai_billing:yourpassword@localhost:5432/rantai_billing"
+export RUN_MODE=production
+export RUST_LOG=rustbill_server=info
+
+# Run (migrations apply automatically on first start)
+cd /opt/rustbill && rustbill-server
+```
+
+### Frontend
+
+```bash
+# Download pre-built standalone tarball
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/rustbill-frontend-standalone.tar.gz
+sudo mkdir -p /opt/rustbill/frontend
+sudo tar xzf rustbill-frontend-standalone.tar.gz -C /opt/rustbill/frontend
+
+# Download Bun runtime
+curl -fsSL https://bun.sh/install | bash
+
+# Set environment and run
+export RUST_BACKEND_URL=http://localhost:3001
+export NODE_ENV=production
+export PORT=3000
+cd /opt/rustbill/frontend && bun server.js
+```
+
+### Verify Checksums
+
+Every release includes a `checksums.txt` with SHA256 hashes:
+
+```bash
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/checksums.txt
+sha256sum -c checksums.txt
+```
+
+## Docker Compose
+
+For containerized deployments, use the production Docker Compose file:
 
 ```yaml
 version: "3.8"
@@ -13,24 +92,31 @@ services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: billing
-      POSTGRES_USER: billing
+      POSTGRES_DB: rantai_billing
+      POSTGRES_USER: rantai_billing
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rantai_billing"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
-    build: .
+    build:
+      context: ./rustbill
     ports:
       - "3001:3001"
     environment:
-      DATABASE_URL: postgres://billing:${DB_PASSWORD}@db:5432/billing
+      DATABASE_URL: postgresql://rantai_billing:${DB_PASSWORD}@db:5432/rantai_billing
       CRON_SECRET: ${CRON_SECRET}
       RUST_LOG: info
       RUN_MODE: production
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -38,57 +124,82 @@ services:
       timeout: 5s
       retries: 3
 
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      RUST_BACKEND_URL: http://api:3001
+      NODE_ENV: production
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
 ```
 
-### Build and Deploy
-
 ```bash
-docker compose build
-docker compose up -d
+export DB_PASSWORD=$(openssl rand -hex 16)
+export CRON_SECRET=$(openssl rand -hex 16)
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-## Binary Deployment
+## Systemd Services
 
-Build a static release binary:
+The TUI installer creates these automatically. If deploying manually, create:
 
-```bash
-cargo build --release
-```
-
-The binary is at `target/release/rustbill-server`. It requires:
-
-- PostgreSQL 17 accessible via `DATABASE_URL`
-- Config files in `config/` relative to the working directory
-- Write access for PDF generation (if enabled)
-
-### Systemd Service
+**`/etc/systemd/system/rustbill-backend.service`**
 
 ```ini
 [Unit]
-Description=RustBill Billing API
-After=network.target postgresql.service
+Description=RustBill API Server
+After=network-online.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=simple
-User=billing
+User=rustbill
+Group=rustbill
 WorkingDirectory=/opt/rustbill
-ExecStart=/opt/rustbill/rustbill-server
-Environment=DATABASE_URL=postgres://billing:password@localhost:5432/billing
-Environment=CRON_SECRET=your-secret
-Environment=RUST_LOG=info
-Environment=RUN_MODE=production
-Restart=always
-RestartSec=5
+EnvironmentFile=/opt/rustbill/.env
+ExecStart=/usr/local/bin/rustbill-server
+Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-## Health Check
+**`/etc/systemd/system/rustbill-frontend.service`**
 
-The `/health` endpoint returns service status:
+```ini
+[Unit]
+Description=RustBill Frontend (Next.js)
+After=network-online.target rustbill-backend.service
+Wants=rustbill-backend.service
+
+[Service]
+Type=simple
+User=rustbill
+Group=rustbill
+WorkingDirectory=/opt/rustbill/frontend
+EnvironmentFile=/opt/rustbill/.env
+ExecStart=/opt/rustbill/bin/bun server.js
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now rustbill-backend rustbill-frontend
+```
+
+## Health Check
 
 ```bash
 curl http://localhost:3001/health
@@ -97,17 +208,9 @@ curl http://localhost:3001/health
 
 Use this for load balancer health checks, container orchestration, and monitoring.
 
-## Database Migrations
-
-Migrations run automatically on server startup. For manual control:
-
-```bash
-export DATABASE_URL="postgres://..."
-cargo sqlx migrate run
-```
-
 ## Security Checklist
 
+- [ ] Change default admin password (`admin@rustbill.local` / `admin123`)
 - [ ] Set strong `CRON_SECRET` for cron endpoints
 - [ ] Configure CORS origins for production (`server.cors_origins`)
 - [ ] Use HTTPS (via reverse proxy like Nginx or Caddy)
@@ -122,12 +225,20 @@ cargo sqlx migrate run
 ```nginx
 server {
     listen 443 ssl;
-    server_name billing-api.example.com;
+    server_name billing.example.com;
 
-    ssl_certificate /etc/letsencrypt/live/billing-api.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/billing-api.example.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/billing.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/billing.example.com/privkey.pem;
 
     location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/ {
         proxy_pass http://127.0.0.1:3001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -136,3 +247,22 @@ server {
     }
 }
 ```
+
+## Upgrading
+
+Download the latest release and restart:
+
+```bash
+# Backend
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/rustbill-server-x86_64-linux-musl
+sudo mv rustbill-server-x86_64-linux-musl /usr/local/bin/rustbill-server
+sudo chmod +x /usr/local/bin/rustbill-server
+sudo systemctl restart rustbill-backend
+
+# Frontend
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/rustbill-frontend-standalone.tar.gz
+sudo tar xzf rustbill-frontend-standalone.tar.gz -C /opt/rustbill/frontend
+sudo systemctl restart rustbill-frontend
+```
+
+Migrations run automatically on backend restart.

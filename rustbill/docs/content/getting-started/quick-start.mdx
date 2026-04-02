@@ -1,15 +1,15 @@
 # Quick Start
 
-This guide walks you through creating a product, customer, subscription, and generating your first invoice.
+This guide walks you through creating a product, customer, subscription, and generating your first invoice. It assumes you've already installed RustBill via the [installer](/getting-started).
 
 ## 1. Authenticate
 
-First, log in to get a session cookie:
+Log in with the default admin credentials to get a session cookie:
 
 ```bash
 curl -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@example.com", "password": "admin123"}' \
+  -d '{"email": "admin@rustbill.local", "password": "admin123"}' \
   -c cookies.txt
 ```
 

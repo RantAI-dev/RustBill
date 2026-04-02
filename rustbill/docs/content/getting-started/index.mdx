@@ -1,45 +1,73 @@
 # Installation
 
-## Prerequisites
+## Quick Install (Recommended)
 
-- **Rust** 1.82 or later (`rustup` recommended)
-- **PostgreSQL** 17 (or use Docker Compose)
-- **Docker & Docker Compose** (optional, for local database)
-
-## Clone the Repository
+Run the one-liner to download and launch the interactive TUI installer:
 
 ```bash
-git clone https://github.com/RantAI-dev/RustBill.git
-cd RustBill/rustbill
+curl -fsSL https://github.com/RantAI-dev/RustBill/releases/latest/download/install.sh | sudo bash
 ```
 
-## Start the Database
+The installer guides you through mode selection, configuration, database setup, and service creation.
 
-The easiest way to get PostgreSQL running is via Docker Compose:
+## Manual Install
+
+Download the installer binary directly from the [latest release](https://github.com/RantAI-dev/RustBill/releases/latest):
 
 ```bash
-docker compose up -d
+curl -LO https://github.com/RantAI-dev/RustBill/releases/latest/download/rustbill-installer-x86_64-linux-musl
+chmod +x rustbill-installer-x86_64-linux-musl
+sudo ./rustbill-installer-x86_64-linux-musl install
 ```
 
-This starts PostgreSQL 17 on port **5444** with a persistent volume.
+## Non-Interactive Install
 
-## Run Migrations
-
-Migrations are applied automatically on startup, but you can also run them manually:
+For scripted or CI deployments, use the `--non-interactive` flag:
 
 ```bash
-export DATABASE_URL="postgres://billing:billing@localhost:5444/billing"
-cargo sqlx migrate run
+sudo ./rustbill-installer-x86_64-linux-musl install \
+  --non-interactive \
+  --mode full \
+  --db-password "your-secure-password" \
+  --api-port 3001 \
+  --frontend-port 3000
 ```
 
-## Build and Run
+All available flags:
 
-```bash
-export DATABASE_URL="postgres://billing:billing@localhost:5444/billing"
-cargo run --release
-```
+| Flag | Default | Description |
+|---|---|---|
+| `--mode` | `full` | `full`, `backend`, `frontend`, or `dev` |
+| `--install-dir` | `/opt/rustbill` | Installation directory |
+| `--db-host` | `localhost` | PostgreSQL host |
+| `--db-port` | `5432` | PostgreSQL port |
+| `--db-name` | `rantai_billing` | Database name |
+| `--db-user` | `rantai_billing` | Database user |
+| `--db-password` | (auto-generated) | Database password |
+| `--api-port` | `3001` | Rust API server port |
+| `--frontend-port` | `3000` | Next.js frontend port |
 
-The server starts on `http://localhost:3001` by default.
+## Installation Modes
+
+| Mode | What it installs |
+|---|---|
+| **full** | PostgreSQL + Rust API + Next.js frontend + systemd services |
+| **backend** | PostgreSQL + Rust API only + systemd service |
+| **frontend** | Next.js frontend only + systemd service (connects to existing backend) |
+| **dev** | Clones repo, builds from source, no systemd |
+
+## What the Installer Does
+
+1. **Preflight checks** -- verifies OS, architecture, RAM, disk, ports
+2. **Installs dependencies** -- PostgreSQL 17, system packages
+3. **Sets up database** -- creates user and database
+4. **Downloads binaries** -- static `rustbill-server` binary from GitHub Releases
+5. **Downloads frontend** -- pre-built Next.js standalone tarball from GitHub Releases
+6. **Generates configuration** -- `production.toml` and `.env` with your settings
+7. **Creates systemd services** -- `rustbill-backend` and `rustbill-frontend`
+8. **Verifies installation** -- health checks on all services
+
+Migrations run automatically when the backend starts. A default admin user (`admin@rustbill.local` / `admin123`) is created on first boot.
 
 ## Verify
 
@@ -48,7 +76,33 @@ curl http://localhost:3001/health
 # => {"status":"ok"}
 ```
 
+Check service status:
+
+```bash
+sudo systemctl status rustbill-backend
+sudo systemctl status rustbill-frontend
+```
+
+View logs:
+
+```bash
+sudo journalctl -u rustbill-backend -f
+```
+
+## Uninstall
+
+```bash
+sudo rustbill-installer uninstall
+```
+
+This stops services, removes binaries and config, but preserves the database. To drop it manually:
+
+```bash
+sudo -u postgres dropdb rantai_billing
+sudo -u postgres dropuser rantai_billing
+```
+
 ## Next Steps
 
-- [Quick Start](/getting-started/quick-start) — Make your first API calls
-- [Configuration](/getting-started/configuration) — Customize server settings, auth, and payment providers
+- [Quick Start](/getting-started/quick-start) -- Make your first API calls
+- [Configuration](/getting-started/configuration) -- Customize server settings, auth, and payment providers
