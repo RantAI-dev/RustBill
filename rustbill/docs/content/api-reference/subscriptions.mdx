@@ -76,6 +76,22 @@ Plan changes are prorated by default — a credit is issued for unused time on t
 
 ## Subscription Statuses
 
+```mermaid
+stateDiagram-v2
+    [*] --> trialing : With trial
+    [*] --> active : No trial
+    trialing --> active : Trial ends
+    trialing --> canceled : Cancel during trial
+    active --> paused : Pause
+    active --> canceled : Cancel
+    active --> past_due : Payment failed
+    paused --> active : Resume
+    paused --> canceled : Cancel
+    past_due --> active : Payment recovered
+    past_due --> canceled : Dunning exhausted
+    canceled --> [*]
+```
+
 | Status | Description |
 |---|---|
 | `active` | Currently billing |
@@ -85,6 +101,24 @@ Plan changes are prorated by default — a credit is issued for unused time on t
 | `trialing` | Within trial period |
 
 ## Lifecycle Automation
+
+```mermaid
+flowchart TD
+    Cron[Daily Cron Job] --> Check{Subscriptions\nat period end?}
+    Check -->|Yes| GenInvoice[Generate Invoice]
+    GenInvoice --> AutoCharge[Auto-charge Payment]
+    AutoCharge -->|Success| Advance[Advance Billing Period]
+    AutoCharge -->|Failure| Dunning[Start Dunning]
+    Check -->|No| Trial{Trials\nexpired?}
+    Trial -->|Yes| Activate[Activate or Cancel]
+    Trial -->|No| Cancel{Scheduled\ncancellations?}
+    Cancel -->|Yes| DoCancel[Cancel Subscription]
+    Cancel -->|No| Done([Done])
+    Advance --> Done
+    Dunning --> Done
+    Activate --> Done
+    DoCancel --> Done
+```
 
 The subscription lifecycle cron job runs daily and:
 

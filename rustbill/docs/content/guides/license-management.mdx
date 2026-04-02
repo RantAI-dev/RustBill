@@ -124,8 +124,16 @@ Useful when a customer replaces a device.
 
 ## License Lifecycle
 
-```
-Created → Active → [Suspended] → Expired/Revoked
+```mermaid
+stateDiagram-v2
+    [*] --> Active : Created
+    Active --> Suspended : Suspend
+    Active --> Expired : Expiration date reached
+    Active --> Revoked : Revoke
+    Suspended --> Active : Reactivate
+    Suspended --> Revoked : Revoke
+    Expired --> [*]
+    Revoked --> [*]
 ```
 
 | Status | License checks return | Can activate |

@@ -2,6 +2,38 @@
 
 RustBill supports multiple authentication methods depending on the API surface.
 
+## Authentication Flow Overview
+
+```mermaid
+flowchart TB
+    subgraph Admin["Admin API (/api/*)"]
+        Login[POST /api/auth/login] -->|Set cookie| Session[(Session Store)]
+        Request1[Admin Request] -->|Cookie: session=...| Validate[AdminUser Extractor]
+        Validate -->|Lookup| Session
+        Validate -->|Check role| Handler1[Route Handler]
+    end
+
+    subgraph Public["Public API (/api/v1/*)"]
+        Request2[API Request] -->|Authorization: Bearer key| KeyCheck[ApiKeyUser Extractor]
+        KeyCheck -->|Hash + lookup| KeyStore[(API Keys)]
+        KeyCheck --> Handler2[Route Handler]
+    end
+
+    subgraph Webhooks["Webhooks (/api/billing/webhooks/*)"]
+        Stripe[Stripe] -->|Stripe-Signature| SigCheck1[HMAC-SHA256]
+        Xendit[Xendit] -->|x-callback-token| SigCheck2[Token Match]
+        LemonSqueezy[LemonSqueezy] -->|X-Signature| SigCheck3[HMAC-SHA256]
+        SigCheck1 --> Handler3[Webhook Handler]
+        SigCheck2 --> Handler3
+        SigCheck3 --> Handler3
+    end
+
+    subgraph License["License Verification (/api/licenses/*)"]
+        App[Client App] --> Verify[POST /api/licenses/verify]
+        Verify -->|No auth required| LicenseDB[(Licenses)]
+    end
+```
+
 ## Admin API (Session-Based)
 
 The main admin API (`/api/*`) uses session-based authentication with HTTP-only cookies.
@@ -53,7 +85,7 @@ Cookie: session=...
 }
 ```
 
-Returns a key that should be stored securely — it's only shown once.
+Returns a key that should be stored securely -- it's only shown once.
 
 ### Using an API Key
 
@@ -85,9 +117,9 @@ When enabled, the login endpoint validates credentials against Keycloak instead 
 
 Inbound webhooks from payment providers use signature verification:
 
-- **Stripe** — `Stripe-Signature` header with HMAC-SHA256
-- **Xendit** — `x-callback-token` header verification
-- **LemonSqueezy** — `X-Signature` header with HMAC-SHA256
+- **Stripe** -- `Stripe-Signature` header with HMAC-SHA256
+- **Xendit** -- `x-callback-token` header verification
+- **LemonSqueezy** -- `X-Signature` header with HMAC-SHA256
 
 ## Cron Endpoint Authentication
 
@@ -99,6 +131,16 @@ X-Cron-Secret: your-cron-secret
 ```
 
 ## Password Hashing
+
+```mermaid
+flowchart LR
+    Input[Password] --> Check{Hash format?}
+    Check -->|bcrypt prefix| Bcrypt[Verify with bcrypt]
+    Check -->|argon2 prefix| Argon2[Verify with Argon2id]
+    Bcrypt -->|Valid| Rehash[Rehash to Argon2id]
+    Argon2 -->|Valid| Done[Authenticated]
+    Rehash --> Done
+```
 
 - New passwords are hashed with **Argon2id**
 - Legacy **bcrypt** hashes are supported for backward compatibility

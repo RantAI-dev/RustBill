@@ -2,6 +2,23 @@
 
 RustBill handles both **inbound** webhooks from payment providers and **outbound** webhooks to notify your systems of billing events.
 
+```mermaid
+flowchart LR
+    subgraph Inbound
+        Stripe[Stripe] -->|Signature verified| RB[RustBill]
+        Xendit[Xendit] -->|Token verified| RB
+        LS[LemonSqueezy] -->|Signature verified| RB
+    end
+
+    RB --> EventStore[(Billing Events)]
+    EventStore --> Dispatch[Event Dispatcher]
+
+    subgraph Outbound
+        Dispatch -->|HMAC signed| EP1[Your Endpoint 1]
+        Dispatch -->|HMAC signed| EP2[Your Endpoint 2]
+    end
+```
+
 ## Inbound Webhooks
 
 Payment providers send events to these endpoints. Each provider has its own signature verification.

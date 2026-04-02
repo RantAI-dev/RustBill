@@ -42,14 +42,14 @@ rustbill/
 
 ### Vertical Slice Architecture
 
-Routes are organized as **vertical slices** — each feature module contains its own route handlers, request/response types, and validation logic. This keeps related code co-located rather than scattered across layers.
+Routes are organized as **vertical slices** -- each feature module contains its own route handlers, request/response types, and validation logic. This keeps related code co-located rather than scattered across layers.
 
 ### Repository + Service Pattern
 
 The core crate follows a repository-service pattern:
 - **Repositories** handle database queries via SQLx with compile-time checked SQL
 - **Services** compose repositories with business logic, validation, and side effects
-- **Route handlers** are thin — they deserialize requests, call services, and serialize responses
+- **Route handlers** are thin -- they deserialize requests, call services, and serialize responses
 
 ### Feature Gates
 
@@ -67,20 +67,62 @@ This allows building only the providers you need, reducing binary size and compi
 
 ## Request Flow
 
+```mermaid
+flowchart LR
+    Client([Client]) --> Router[Axum Router]
+    Router --> MW[Middleware\nCORS / Session / Tracing]
+    MW --> Handler[Route Handler]
+    Handler --> Service[Service Layer\nrustbill-core]
+    Service --> Repo[Repository\nSQLx queries]
+    Repo --> DB[(PostgreSQL)]
 ```
-Client Request
-  → Axum Router (app.rs)
-    → Middleware (CORS, session validation, tracing)
-      → Route Handler (routes/)
-        → Service (core/billing/, core/customers/, etc.)
-          → Repository (SQLx queries)
-            → PostgreSQL
+
+## System Architecture
+
+```mermaid
+flowchart TB
+    Browser([Browser]) --> Frontend[Next.js Frontend\nPort 3000]
+    Frontend -->|/api/* proxy| Backend[Rust API Server\nPort 3001]
+    Backend --> DB[(PostgreSQL 17)]
+    Backend --> Stripe[Stripe API]
+    Backend --> Xendit[Xendit API]
+    Backend --> LS[LemonSqueezy API]
+    Backend --> SMTP[SMTP Server]
+    Stripe -->|Webhooks| Backend
+    Xendit -->|Webhooks| Backend
+    LS -->|Webhooks| Backend
+    Cron([Cron Scheduler]) --> Backend
+```
+
+## Billing Lifecycle
+
+```mermaid
+flowchart TD
+    Create[Create Subscription] --> Active[Active]
+    Active -->|Period end| Invoice[Generate Invoice]
+    Invoice --> Charge[Auto-charge]
+    Charge -->|Success| Renew[Advance Period]
+    Renew --> Active
+    Charge -->|Failure| PastDue[Past Due]
+    PastDue --> Dunning[Dunning Process]
+    Dunning -->|Reminder| Retry1[Retry Payment]
+    Retry1 -->|Success| Active
+    Retry1 -->|Failure| Warning[Warning]
+    Warning --> Retry2[Retry Payment]
+    Retry2 -->|Success| Active
+    Retry2 -->|Failure| Final[Final Notice]
+    Final --> Retry3[Retry Payment]
+    Retry3 -->|Success| Active
+    Retry3 -->|Failure| Suspend[Suspension]
+    Active -->|User request| Paused[Paused]
+    Paused -->|Resume| Active
+    Active -->|Cancel| Canceled[Canceled]
 ```
 
 ## Key Design Decisions
 
-- **SQLx compile-time queries** — SQL is verified at compile time against the database schema, catching errors before runtime
-- **Axum extractors** — Authentication is enforced via `AdminUser` and `ApiKeyUser` extractors, making it impossible to forget auth checks
-- **Decimal arithmetic** — All monetary values use `rust_decimal` to avoid floating-point errors
-- **ULID primary keys** — Sortable, URL-safe identifiers used for all entities
-- **Tower middleware** — Request tracing, CORS, and rate limiting composed via Tower's service pattern
+- **SQLx compile-time queries** -- SQL is verified at compile time against the database schema, catching errors before runtime
+- **Axum extractors** -- Authentication is enforced via `AdminUser` and `ApiKeyUser` extractors, making it impossible to forget auth checks
+- **Decimal arithmetic** -- All monetary values use `rust_decimal` to avoid floating-point errors
+- **ULID primary keys** -- Sortable, URL-safe identifiers used for all entities
+- **Tower middleware** -- Request tracing, CORS, and rate limiting composed via Tower's service pattern

@@ -2,21 +2,28 @@
 
 RustBill uses PostgreSQL 17 with migrations managed by SQLx. All tables use UUID primary keys and `timestamptz` for timestamps.
 
-## Entity Relationship Overview
+## Entity Relationship Diagram
 
-```
-products ──────┐
-               ├── plans ── subscriptions ── invoices ── payments
-customers ─────┘       │                          │
-    │                  └── coupons                └── credit_notes
-    ├── licenses ── license_activations
-    ├── customer_products
-    └── deals
-
-billing_events ── webhook_endpoints
-sales_events (partitioned)
-dunning_attempts
-tax_rules
+```mermaid
+erDiagram
+    products ||--o{ plans : "has"
+    products ||--o{ licenses : "licenses"
+    products ||--o{ customer_products : "assigned to"
+    customers ||--o{ subscriptions : "subscribes"
+    customers ||--o{ invoices : "billed"
+    customers ||--o{ licenses : "owns"
+    customers ||--o{ customer_products : "uses"
+    customers ||--o{ deals : "tracks"
+    customers ||--o{ api_keys : "authenticates"
+    plans ||--o{ subscriptions : "plan for"
+    plans ||--o{ coupons : "discounts"
+    subscriptions ||--o{ invoices : "generates"
+    invoices ||--o{ payments : "paid by"
+    invoices ||--o{ credit_notes : "credited"
+    licenses ||--o{ license_activations : "activated on"
+    subscriptions ||--o{ dunning_attempts : "recovery"
+    customers ||--o{ webhook_endpoints : "receives"
+    billing_events ||--o{ webhook_endpoints : "dispatched to"
 ```
 
 ## Core Tables
@@ -58,8 +65,8 @@ The product catalog. Supports three product types with type-specific nullable fi
 | Column | Type | Description |
 |---|---|---|
 | `id` | UUID | Primary key |
-| `customer_id` | UUID | FK → customers |
-| `plan_id` | UUID | FK → plans |
+| `customer_id` | UUID | FK to customers |
+| `plan_id` | UUID | FK to plans |
 | `status` | subscription_status | `active`, `paused`, `canceled`, `past_due`, `trialing` |
 | `billing_cycle` | billing_cycle | `monthly`, `quarterly`, `yearly` |
 | `current_period_start` | TIMESTAMPTZ | Start of current billing period |
@@ -72,8 +79,8 @@ The product catalog. Supports three product types with type-specific nullable fi
 | Column | Type | Description |
 |---|---|---|
 | `id` | UUID | Primary key |
-| `customer_id` | UUID | FK → customers |
-| `subscription_id` | UUID | FK → subscriptions (nullable) |
+| `customer_id` | UUID | FK to customers |
+| `subscription_id` | UUID | FK to subscriptions (nullable) |
 | `invoice_number` | VARCHAR(50) | Unique human-readable number |
 | `status` | invoice_status | `draft`, `issued`, `paid`, `overdue`, `void` |
 | `subtotal` | DECIMAL(12,2) | Before tax |
@@ -91,8 +98,8 @@ The product catalog. Supports three product types with type-specific nullable fi
 |---|---|---|
 | `id` | UUID | Primary key |
 | `license_key` | VARCHAR(255) | Unique license key string |
-| `customer_id` | UUID | FK → customers |
-| `product_id` | UUID | FK → products |
+| `customer_id` | UUID | FK to customers |
+| `product_id` | UUID | FK to products |
 | `status` | VARCHAR(50) | `active`, `expired`, `revoked`, `suspended` |
 | `max_activations` | INTEGER | Device activation limit |
 | `current_activations` | INTEGER | Current active devices |
