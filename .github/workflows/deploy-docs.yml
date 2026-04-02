@@ -35,6 +35,8 @@ jobs:
 
       - name: Build
         run: bun run build
+        env:
+          PAGES_BASE_PATH: /RustBill
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

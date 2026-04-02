@@ -1,5 +1,7 @@
+import { basePath } from '../app/config'
+
 {<div className="hero">
-  <img src="/rustbill-logo.png" alt="RustBill" className="hero-logo" />
+  <img src={`${basePath}/rustbill-logo.png`} alt="RustBill" className="hero-logo" />
   <h1>RustBill</h1>
   <div className="subtitle">
     Open-source billing, subscription, and license management API built with Rust for speed and reliability.

@@ -5,6 +5,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import 'nextra-theme-docs/style.css'
 import './custom.css'
+import { basePath } from './config'
 
 export const metadata: Metadata = {
   title: {
@@ -15,11 +16,11 @@ export const metadata: Metadata = {
     'RustBill — Open-Source Billing, Product & License Management API built with Rust.',
   icons: {
     icon: [
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: `${basePath}/favicon-32x32.png`, sizes: '32x32', type: 'image/png' },
+      { url: `${basePath}/favicon-16x16.png`, sizes: '16x16', type: 'image/png' },
     ],
-    shortcut: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    shortcut: `${basePath}/favicon.ico`,
+    apple: `${basePath}/apple-touch-icon.png`,
   },
   openGraph: {
     title: 'RustBill Documentation',
@@ -36,7 +37,7 @@ const navbar = (
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/rustbill-logo.png"
+          src={`${basePath}/rustbill-logo.png`}
           alt="RustBill"
           width={28}
           height={28}
@@ -124,7 +125,7 @@ export default async function RootLayout({
         <Layout
           navbar={navbar}
           pageMap={await getPageMap()}
-          docsRepositoryBase="https://github.com/RantAI-dev/RustBill/tree/main/docs"
+          docsRepositoryBase="https://github.com/RantAI-dev/RustBill/tree/main/rustbill/docs"
           footer={footer}
           sidebar={{ defaultMenuCollapseLevel: 1 }}
           editLink="Edit this page on GitHub"

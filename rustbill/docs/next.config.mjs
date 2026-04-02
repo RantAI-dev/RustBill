@@ -12,6 +12,5 @@ export default withNextra({
     unoptimized: true,
   },
   outputFileTracingRoot: import.meta.dirname,
-  // Uncomment and set basePath when deploying to GitHub Pages under a subpath:
-  // basePath: '/RustBill',
+  basePath: process.env.PAGES_BASE_PATH || '',
 })
